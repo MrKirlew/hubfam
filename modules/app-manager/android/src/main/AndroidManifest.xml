@@ -1,0 +1,13 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+  package="expo.modules.appmanager">
+
+  <!-- Required on Android 11+ (API 30+) to query all installed packages -->
+  <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
+  <!-- Required to launch uninstall intents for other packages -->
+  <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+
+  <!-- Required for Do Not Disturb control -->
+  <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+
+</manifest>

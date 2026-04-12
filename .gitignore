@@ -1,0 +1,46 @@
+# Environment variables — NEVER commit credentials
+.env
+.env.local
+.env.production
+
+# Node
+node_modules/
+
+# Expo
+.expo/
+
+# Android build outputs
+android/app/build/
+android/.gradle/
+
+# iOS
+ios/Pods/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Google service credentials
+droidgoogser.json
+webgserv.json
+google-services.json
+
+# Dev screenshots (loose files in root)
+*.png
+!assets/**/*.png
+
+# Play Store signing key
+*.keystore
+*.jks
+play-store-key.json
+
+# === Internal team framework (private — do not commit) ===
+PROJECT_SUMMARY_PART*.md
+CLAUDE.md
+.claude-team/
+PROJECT_SUMMARY_P*.md
+DECISION_LOG*.md
+TECH_DEBT*.md
+init.sh
+scan.sh
+inspect.sh
