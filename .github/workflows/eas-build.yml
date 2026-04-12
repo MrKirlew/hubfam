@@ -18,7 +18,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: Setup EAS CLI
         uses: expo/expo-github-action@v8
