@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — Family Hub</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #080c18; color: #e8eeff; line-height: 1.7; padding: 24px; max-width: 800px; margin: 0 auto; }
+    h1 { color: #60a5fa; font-size: 28px; margin-bottom: 8px; }
+    h2 { color: #60a5fa; font-size: 20px; margin-top: 32px; margin-bottom: 12px; border-bottom: 1px solid rgba(96,165,250,.2); padding-bottom: 8px; }
+    h3 { color: #e8eeff; font-size: 16px; margin-top: 20px; margin-bottom: 8px; }
+    p, li { color: rgba(232,238,255,.85); font-size: 15px; margin-bottom: 8px; }
+    ul { padding-left: 24px; margin-bottom: 12px; }
+    a { color: #60a5fa; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .meta { color: rgba(232,238,255,.5); font-size: 13px; margin-bottom: 24px; }
+    strong { color: #e8eeff; }
+  </style>
+</head>
+<body>
+  <h1>Privacy Policy — Family Hub</h1>
+  <p class="meta">Last updated: April 16, 2026 &nbsp;|&nbsp; Contact: relwik@gmail.com</p>
+
+  <h2>What Data We Collect</h2>
+
+  <h3>Calendar Data</h3>
+  <ul>
+    <li>Google Calendar events (synced via Google Calendar API)</li>
+    <li>Apple Calendar events (synced via Apple Sign-In + iCloud)</li>
+    <li>iCal/webcal feed events (fetched from URLs you provide)</li>
+    <li>Manually created events within the app</li>
+  </ul>
+
+  <h3>Task Data</h3>
+  <ul>
+    <li>Google Tasks lists and items (synced via Google Tasks API)</li>
+    <li>Locally created to-do lists and items</li>
+  </ul>
+
+  <h3>Location Data</h3>
+  <ul>
+    <li>Device GPS coordinates (used only for weather display)</li>
+    <li>City/region name (derived from GPS for weather location label)</li>
+  </ul>
+
+  <h3>Cleaning Data</h3>
+  <ul>
+    <li>Cleaning log entries (what was cleaned, by whom, when, and notes)</li>
+    <li>Stored entirely on-device</li>
+  </ul>
+
+  <h3>Member Data</h3>
+  <ul>
+    <li>Family member names, initials, colors, and roles</li>
+    <li>Optional 4-digit hub PIN (hashed with SHA-256 + random salt, stored in device secure storage — never stored or transmitted in plaintext)</li>
+  </ul>
+
+  <h2>Where Data Is Stored</h2>
+  <p><strong>All data is stored on-device only.</strong> Family Hub does not operate any cloud servers or databases.</p>
+  <ul>
+    <li><strong>Calendar/task/list data:</strong> AsyncStorage (on-device local storage)</li>
+    <li><strong>Google/Apple OAuth tokens:</strong> Expo SecureStore (hardware-encrypted via Android Keystore / iOS Keychain)</li>
+    <li><strong>Hub PIN hash:</strong> Expo SecureStore (hardware-encrypted)</li>
+    <li><strong>Weather location:</strong> AsyncStorage (latitude, longitude, city name)</li>
+    <li><strong>Cleaning logs:</strong> AsyncStorage (on-device)</li>
+  </ul>
+
+  <h2>Third-Party Services</h2>
+
+  <h3>Google Calendar API &amp; Google Tasks API</h3>
+  <ul>
+    <li>Used to read and write calendar events and tasks</li>
+    <li>Data transmitted directly between your device and Google's servers</li>
+    <li>Subject to <a href="https://policies.google.com/privacy">Google's Privacy Policy</a></li>
+  </ul>
+
+  <h3>Apple Sign-In &amp; iCloud Calendar</h3>
+  <ul>
+    <li>Used to access iCloud calendars when you connect an Apple account</li>
+    <li>Subject to <a href="https://www.apple.com/legal/privacy/">Apple's Privacy Policy</a></li>
+  </ul>
+
+  <h3>Open-Meteo Weather API</h3>
+  <ul>
+    <li>Used to fetch current weather conditions</li>
+    <li>Your device's GPS coordinates are sent to Open-Meteo to retrieve local weather</li>
+    <li>Open-Meteo is a free, open-source API — <a href="https://open-meteo.com/en/terms">privacy info</a></li>
+  </ul>
+
+  <h3>Sentry (Crash Reporting)</h3>
+  <ul>
+    <li>Used to collect anonymous crash diagnostic data (device type, OS version, app version, stack trace)</li>
+    <li>No personally identifiable information is included in crash reports</li>
+    <li>Subject to <a href="https://sentry.io/privacy/">Sentry's Privacy Policy</a></li>
+  </ul>
+
+  <h2>Data We Do NOT Collect</h2>
+  <ul>
+    <li>No behavioral analytics or usage tracking</li>
+    <li>No advertising identifiers</li>
+    <li>No data sold to third parties</li>
+    <li>No cloud storage or server-side databases</li>
+    <li>No biometric data</li>
+  </ul>
+
+  <h2>Security</h2>
+  <ul>
+    <li>Hub PINs are hashed with SHA-256 + random salt before storage</li>
+    <li>Brute-force protection: 5 wrong PIN attempts triggers exponential lockout</li>
+    <li>OAuth tokens stored in hardware-encrypted secure storage</li>
+    <li>All network traffic uses HTTPS/TLS (cleartext traffic is blocked)</li>
+    <li>Android backup disabled to prevent unauthorized data extraction</li>
+    <li>ProGuard code obfuscation enabled in release builds</li>
+  </ul>
+
+  <h2>How to Delete Your Data</h2>
+  <ul>
+    <li><strong>Remove a family member:</strong> Settings &gt; General &gt; tap member &gt; Delete</li>
+    <li><strong>Clear all data:</strong> Settings &gt; Security &gt; Danger Zone &gt; Reset All Data</li>
+    <li><strong>Revoke Google access:</strong> Visit <a href="https://myaccount.google.com/permissions">Google Account Permissions</a> and remove FamilyHub</li>
+    <li><strong>Uninstall the app:</strong> All local data is permanently deleted</li>
+  </ul>
+
+  <h2>Children's Privacy</h2>
+  <p>Family Hub supports child member profiles managed by adult administrators. The app does not independently collect data from children under 13. All data is managed locally by the family's adult members.</p>
+
+  <h2>Changes to This Policy</h2>
+  <p>We may update this privacy policy from time to time. The "Last updated" date at the top indicates the most recent revision.</p>
+
+  <h2>Contact</h2>
+  <p>For privacy questions, contact: <strong><a href="mailto:relwik@gmail.com">relwik@gmail.com</a></strong></p>
+</body>
+</html>
