@@ -20,13 +20,13 @@ interface Props {
 export default function ModalSheet({ visible, onClose, children, maxWidth = 440 }: Props) {
   const t = useTheme();
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} accessibilityViewIsModal={true}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
       >
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose}>
+        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close modal">
           <View
             style={[styles.sheet, { maxWidth, backgroundColor: t.modal, borderColor: t.cardBorder }]}
             onStartShouldSetResponder={() => true}

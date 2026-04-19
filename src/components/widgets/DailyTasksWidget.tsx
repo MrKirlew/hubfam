@@ -120,7 +120,7 @@ export default function DailyTasksWidget({ compact }: { compact?: boolean }) {
   };
 
   return (
-    <View style={s.container}>
+    <View style={s.container} accessibilityLiveRegion="polite">
       <View style={s.header}>
         <Text style={[s.title, compact && { fontSize: 14 }]}>Daily Tasks</Text>
         <Text style={s.count}>{done}/{dailyItems.length}</Text>
@@ -138,10 +138,16 @@ export default function DailyTasksWidget({ compact }: { compact?: boolean }) {
               style={s.itemRow}
               onPress={() => openDetail(item)}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`${item.text}, ${item.listName}${item.done ? ", completed" : ""}`}
+              accessibilityHint="Tap for details"
             >
               <TouchableOpacity
                 onPress={() => handleToggle(item.listId, item.id)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="checkbox"
+                accessibilityLabel={`Toggle ${item.text}`}
+                accessibilityState={{ checked: item.done }}
               >
                 <Ionicons
                   name={item.done ? "checkbox" : "square-outline"}
@@ -168,7 +174,7 @@ export default function DailyTasksWidget({ compact }: { compact?: boolean }) {
 
       {/* Add task button — always visible, adapts to compact */}
       {lists.length > 0 && (
-        <TouchableOpacity style={s.addRow} onPress={openAddModal} activeOpacity={0.7}>
+        <TouchableOpacity style={s.addRow} onPress={openAddModal} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Add task for today">
           <View style={s.addPlaceholder}>
             <Ionicons name="add-circle" size={compact ? 14 : 18} color={t.textFaint} />
             <Text style={[s.addPlaceholderText, compact && { fontSize: 11 }]}>
@@ -190,14 +196,17 @@ export default function DailyTasksWidget({ compact }: { compact?: boolean }) {
           onSubmitEditing={handleAddSubmit}
           returnKeyType="done"
           autoFocus
+          accessibilityLabel="Task name"
         />
         <View style={s.sheetActions}>
-          <TouchableOpacity style={s.sheetCancel} onPress={() => setShowAddModal(false)}>
+          <TouchableOpacity style={s.sheetCancel} onPress={() => setShowAddModal(false)} accessibilityRole="button" accessibilityLabel="Cancel">
             <Text style={s.sheetCancelText}>Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[s.sheetBtn, !newItemText.trim() && { opacity: 0.4 }]}
             onPress={handleAddSubmit}
+            accessibilityRole="button"
+            accessibilityLabel="Add task"
           >
             <Ionicons name="add-circle" size={18} color={t.textOnAccent} />
             <Text style={s.sheetBtnText}>Add Task</Text>
@@ -211,7 +220,7 @@ export default function DailyTasksWidget({ compact }: { compact?: boolean }) {
           <>
             <View style={s.detailHeader}>
               <Text style={s.sheetTitle}>Task Details</Text>
-              <TouchableOpacity onPress={saveDetail} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity onPress={saveDetail} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Close task details">
                 <Ionicons name="close" size={22} color={t.textFaint} />
               </TouchableOpacity>
             </View>
@@ -224,6 +233,7 @@ export default function DailyTasksWidget({ compact }: { compact?: boolean }) {
               placeholder="Task title..."
               placeholderTextColor={t.textFaint}
               autoFocus
+              accessibilityLabel="Task title"
             />
 
             <Text style={s.fieldLabel}>List</Text>
@@ -236,6 +246,9 @@ export default function DailyTasksWidget({ compact }: { compact?: boolean }) {
                 handleToggle(detailItem.listId, detailItem.id);
                 setDetailItem({ ...detailItem, done: !detailItem.done });
               }}
+              accessibilityRole="checkbox"
+              accessibilityLabel={detailItem.done ? "Mark as not completed" : "Mark as completed"}
+              accessibilityState={{ checked: detailItem.done }}
             >
               <Ionicons
                 name={detailItem.done ? "checkbox" : "square-outline"}
@@ -260,6 +273,8 @@ export default function DailyTasksWidget({ compact }: { compact?: boolean }) {
                     const nextMember = nextIdx < members.length ? members[nextIdx].id : undefined;
                     setDetailItem({ ...detailItem, assignedTo: nextMember });
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Assigned to ${getMemberName(detailItem.assignedTo) || "nobody"}, tap to change`}
                 >
                   <Ionicons name="person-circle-outline" size={20}
                     color={getMemberColor(detailItem.assignedTo)} />
@@ -274,11 +289,13 @@ export default function DailyTasksWidget({ compact }: { compact?: boolean }) {
               <TouchableOpacity
                 style={s.deleteBtn}
                 onPress={() => handleRemove(detailItem)}
+                accessibilityRole="button"
+                accessibilityLabel="Delete task"
               >
                 <Ionicons name="trash-outline" size={16} color={t.error} />
                 <Text style={[s.sheetCancelText, { color: t.error }]}>Delete</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={s.sheetBtn} onPress={saveDetail}>
+              <TouchableOpacity style={s.sheetBtn} onPress={saveDetail} accessibilityRole="button" accessibilityLabel="Save task">
                 <Ionicons name="checkmark-circle" size={18} color={t.textOnAccent} />
                 <Text style={s.sheetBtnText}>Save</Text>
               </TouchableOpacity>
@@ -289,18 +306,18 @@ export default function DailyTasksWidget({ compact }: { compact?: boolean }) {
 
       {/* List picker modal */}
       <Modal visible={showListPicker} transparent animationType="fade" onRequestClose={() => setShowListPicker(false)}>
-        <TouchableOpacity style={s.backdrop} activeOpacity={1} onPress={() => setShowListPicker(false)}>
+        <TouchableOpacity style={s.backdrop} activeOpacity={1} onPress={() => setShowListPicker(false)} accessibilityRole="button" accessibilityLabel="Close list picker">
           <View style={s.pickerSheet}>
             <Text style={s.pickerTitle}>Add to which list?</Text>
             <ScrollView>
               {lists.map(l => (
-                <TouchableOpacity key={l.id} style={s.pickerRow} onPress={() => handlePickList(l.id)}>
+                <TouchableOpacity key={l.id} style={s.pickerRow} onPress={() => handlePickList(l.id)} accessibilityRole="button" accessibilityLabel={`Add to ${l.name}`}>
                   <Text style={s.pickerIcon}>{l.icon}</Text>
                   <Text style={s.pickerName}>{l.name}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
-            <TouchableOpacity style={s.cancelRow} onPress={() => setShowListPicker(false)}>
+            <TouchableOpacity style={s.cancelRow} onPress={() => setShowListPicker(false)} accessibilityRole="button" accessibilityLabel="Cancel">
               <Text style={s.cancelLabel}>Cancel</Text>
             </TouchableOpacity>
           </View>

@@ -9,24 +9,26 @@
  *  • Merging all sources into our unified CalendarEvent format
  */
 
-import {
-  GoogleSignin,
-  User,
-} from "@react-native-google-signin/google-signin";
+import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import * as SecureStore from "expo-secure-store";
 import RNCalendarEvents from "react-native-calendar-events";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { googleApiFetch } from "./googleApiFetch";
+import { recordFailure } from "./ErrorRecoveryService";
+import { onAuthFailure, markResolved } from "./ErrorRecoveryService";
+import { useAppStore } from "../store/appStore";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface CalendarFeed {
   id:         string;
   name:       string;
-  type:       "gcal" | "ical" | "native" | "manual";
+  type:       "gcal" | "ical" | "apple" | "native" | "manual";
   memberId:   string | null;
   color:      string;
   account:           string | null;   // email or .ics URL
   googleCalendarId?: string;         // specific Google calendar ID
+  appleCalendarId?:  string;         // iOS system calendar ID for iCloud
   enabled:    boolean;
   lastSynced: number | null;   // unix ms
 }
@@ -43,7 +45,7 @@ export interface CalendarEvent {
   reminder:   string;          // minutes as string
   location?:  string;
   notes?:     string;
-  source:     "gcal" | "ical" | "native" | "manual";
+  source:     "gcal" | "ical" | "apple" | "native" | "manual";
   externalId: string | null;   // original event ID from source
 }
 
@@ -86,6 +88,7 @@ function getSafeKey(email: string): string {
 /**
  * Exchange serverAuthCode for refresh_token and store it in SecureStore.
  * This allows background sync for multiple accounts.
+ * Note: Mobile/installed apps do not send client_secret per Google OAuth2 spec.
  */
 async function exchangeAndStoreToken(email: string, code: string): Promise<void> {
   if (!email) return;
@@ -96,7 +99,6 @@ async function exchangeAndStoreToken(email: string, code: string): Promise<void>
       body: new URLSearchParams({
         code,
         client_id: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? "",
-        client_secret: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_SECRET ?? "",
         grant_type: "authorization_code",
         redirect_uri: "",
       }).toString(),
@@ -107,7 +109,7 @@ async function exchangeAndStoreToken(email: string, code: string): Promise<void>
       await SecureStore.setItemAsync(TOKEN_PREFIX + getSafeKey(email), data.refresh_token);
       console.log(`[GoogleSignin] Stored refresh token for ${email}`);
     } else {
-      console.error(`[GoogleSignin] Failed to get refresh token for ${email}:`, data);
+      console.log(`[GoogleSignin] No refresh token returned for ${email}. SDK tokens will be used as fallback.`);
     }
   } catch (err) {
     console.error(`[GoogleSignin] Token exchange error for ${email}:`, err);
@@ -116,6 +118,7 @@ async function exchangeAndStoreToken(email: string, code: string): Promise<void>
 
 /**
  * Manually refresh an access token using a stored refresh token.
+ * Note: Mobile/installed apps do not send client_secret per Google OAuth2 spec.
  */
 async function refreshAccessTokenManually(email: string): Promise<string | null> {
   if (!email) return null;
@@ -129,7 +132,6 @@ async function refreshAccessTokenManually(email: string): Promise<string | null>
       body: new URLSearchParams({
         refresh_token: refreshToken,
         client_id: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? "",
-        client_secret: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_SECRET ?? "",
         grant_type: "refresh_token",
       }).toString(),
     });
@@ -138,7 +140,7 @@ async function refreshAccessTokenManually(email: string): Promise<string | null>
     if (data.access_token) {
       return data.access_token;
     }
-    console.error(`[GoogleSignin] Manual refresh failed for ${email}:`, data);
+    console.log(`[GoogleSignin] Manual refresh failed for ${email}. User may need to re-authenticate.`);
     return null;
   } catch (err) {
     console.error(`[GoogleSignin] Manual refresh error for ${email}:`, err);
@@ -155,7 +157,7 @@ async function refreshAccessTokenManually(email: string): Promise<string | null>
 async function getValidAccessToken(email: string): Promise<string> {
   if (!email) throw new Error("SIGN_IN_REQUIRED: No email provided");
 
-  const currentUser = await GoogleSignin.getCurrentUser();
+  const currentUser = GoogleSignin.getCurrentUser();
   
   // If the SDK's current user matches the requested email, use the SDK
   if (currentUser?.user.email && currentUser.user.email.toLowerCase() === email.toLowerCase()) {
@@ -176,9 +178,14 @@ async function getValidAccessToken(email: string): Promise<string> {
 
   // Use manual refresh if SDK session is different or failed
   const manualToken = await refreshAccessTokenManually(email);
-  if (manualToken) return manualToken;
+  if (manualToken) {
+    markResolved(`auth:${email}`);
+    return manualToken;
+  }
 
-  throw new Error(`SIGN_IN_REQUIRED: ${email}`);
+  const authError = new Error(`SIGN_IN_REQUIRED: ${email}`);
+  onAuthFailure(email, authError);
+  throw authError;
 }
 
 /**
@@ -245,9 +252,10 @@ export interface GCalListEntry {
  */
 export async function fetchCalendarList(email: string): Promise<GCalListEntry[]> {
   const accessToken = await getValidAccessToken(email);
-  const res = await fetch(
+  const res = await googleApiFetch(
     "https://www.googleapis.com/calendar/v3/users/me/calendarList",
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+    { operationKey: `calendarList:${email}` }
   );
   if (!res.ok) throw new Error(`Failed to fetch calendar list: ${res.status}`);
   const data = await res.json();
@@ -266,7 +274,7 @@ export async function fetchCalendarList(email: string): Promise<GCalListEntry[]>
  */
 export async function subscribeToCalendar(email: string, calendarId: string): Promise<void> {
   const accessToken = await getValidAccessToken(email);
-  const res = await fetch(
+  const res = await googleApiFetch(
     "https://www.googleapis.com/calendar/v3/users/me/calendarList",
     {
       method: "POST",
@@ -275,7 +283,8 @@ export async function subscribeToCalendar(email: string, calendarId: string): Pr
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ id: calendarId }),
-    }
+    },
+    { operationKey: `calSubscribe:${calendarId}` }
   );
   if (!res.ok) throw new Error(`Failed to subscribe: ${res.status}`);
 }
@@ -285,12 +294,13 @@ export async function subscribeToCalendar(email: string, calendarId: string): Pr
  */
 export async function unsubscribeFromCalendar(email: string, calendarId: string): Promise<void> {
   const accessToken = await getValidAccessToken(email);
-  const res = await fetch(
+  const res = await googleApiFetch(
     `https://www.googleapis.com/calendar/v3/users/me/calendarList/${encodeURIComponent(calendarId)}`,
     {
       method: "DELETE",
       headers: { Authorization: `Bearer ${accessToken}` },
-    }
+    },
+    { operationKey: `calUnsubscribe:${calendarId}` }
   );
   if (!res.ok) throw new Error(`Failed to unsubscribe: ${res.status}`);
 }
@@ -313,9 +323,10 @@ export async function fetchGoogleCalendarEvents(
   if (googleCalendarId) {
     calIds = [googleCalendarId];
   } else {
-    const calsRes = await fetch(
+    const calsRes = await googleApiFetch(
       "https://www.googleapis.com/calendar/v3/users/me/calendarList",
-      { headers: { Authorization: `Bearer ${accessToken}` } }
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+      { operationKey: `calendarList:${email}` }
     );
     if (!calsRes.ok) throw new Error(`Failed to fetch calendar list: ${calsRes.status}`);
     const calsData = await calsRes.json();
@@ -336,13 +347,15 @@ export async function fetchGoogleCalendarEvents(
         maxResults: "250",
       });
 
-      const evRes = await fetch(
+      const evRes = await googleApiFetch(
         `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?${params}`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+        { operationKey: `calEvents:${calId}` }
       );
-      
+
       if (!evRes.ok) {
-        console.error(`[GCal] Failed to fetch events for ${calId}: ${evRes.status}`);
+        console.error(`[GCal] Failed to fetch events for ${calId} after retries: ${evRes.status}`);
+        recordFailure(`calEvents:${calId}`, new Error(`Calendar ${calId} fetch failed: ${evRes.status}`));
         continue;
       }
 
@@ -418,7 +431,7 @@ export async function createGoogleCalendarEvent(
     body.end = { dateTime: endTime + tz };
   }
 
-  const res = await fetch(
+  const res = await googleApiFetch(
     "https://www.googleapis.com/calendar/v3/calendars/primary/events",
     {
       method: "POST",
@@ -427,7 +440,8 @@ export async function createGoogleCalendarEvent(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
-    }
+    },
+    { operationKey: `calCreateEvent:${email}` }
   );
 
   if (!res.ok) {
@@ -448,12 +462,13 @@ export async function deleteGoogleCalendarEvent(
   calendarId: string = "primary"
 ): Promise<void> {
   const accessToken = await getValidAccessToken(email);
-  const res = await fetch(
+  const res = await googleApiFetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
     {
       method: "DELETE",
       headers: { Authorization: `Bearer ${accessToken}` },
-    }
+    },
+    { operationKey: `calDeleteEvent:${eventId}` }
   );
   if (!res.ok && res.status !== 410) {
     console.log(`[CalendarSync] Delete event failed: ${res.status}`);
@@ -488,7 +503,7 @@ export async function updateGoogleCalendarEvent(
     body.end = { dateTime: endTime + tz };
   }
 
-  const res = await fetch(
+  const res = await googleApiFetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
     {
       method: "PATCH",
@@ -497,7 +512,8 @@ export async function updateGoogleCalendarEvent(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
-    }
+    },
+    { operationKey: `calUpdateEvent:${eventId}` }
   );
   if (!res.ok) {
     console.log(`[CalendarSync] Update event failed: ${res.status}`);
@@ -550,14 +566,39 @@ function parseICalText(text: string): Partial<CalendarEvent>[] {
   return events;
 }
 
+const ICAL_DATE_RE = /^(\d{8})(T(\d{6}))?/;
+
 function parseVEvent(ev: Record<string, string>): Partial<CalendarEvent> | null {
-  if (!ev["DTSTART"] && !ev["DTSTART;VALUE=DATE"]) return null;
+  // Find the DTSTART key — handles DTSTART, DTSTART;VALUE=DATE, DTSTART;TZID=... variants
+  const dtKey = Object.keys(ev).find(k => k.startsWith("DTSTART"));
+  const dtRaw = dtKey ? ev[dtKey] : "";
 
-  const dtRaw = ev["DTSTART"] || ev["DTSTART;VALUE=DATE"] || "";
-  const isAllDay = dtRaw.length === 8;
+  if (!dtRaw) return null;
 
-  const dateStr = `${dtRaw.substring(0,4)}-${dtRaw.substring(4,6)}-${dtRaw.substring(6,8)}`;
-  const timeStr = isAllDay ? "00:00" : `${dtRaw.substring(9,11)}:${dtRaw.substring(11,13)}`;
+  const match = ICAL_DATE_RE.exec(dtRaw);
+  if (!match) {
+    console.warn("[iCal] Skipping event with malformed date:", dtRaw);
+    return null;
+  }
+
+  const dateDigits = match[1]; // "20240315"
+  const timeDigits = match[3]; // "093000" or undefined
+
+  const year  = dateDigits.substring(0, 4);
+  const month = dateDigits.substring(4, 6);
+  const day   = dateDigits.substring(6, 8);
+
+  // Bounds check
+  const monthNum = parseInt(month, 10);
+  const dayNum   = parseInt(day, 10);
+  if (monthNum < 1 || monthNum > 12 || dayNum < 1 || dayNum > 31) {
+    console.warn("[iCal] Skipping event with out-of-bounds date:", dtRaw);
+    return null;
+  }
+
+  const isAllDay = !timeDigits;
+  const dateStr = `${year}-${month}-${day}`;
+  const timeStr = isAllDay ? "00:00" : `${timeDigits.substring(0, 2)}:${timeDigits.substring(2, 4)}`;
 
   return {
     title:      decodeICalText(ev["SUMMARY"] || "(No title)"),
@@ -631,6 +672,9 @@ export async function syncAllFeeds(
 
       if (feed.type === "gcal" && feed.account) {
         rawEvents = await fetchGoogleCalendarEvents(feed.account, fromDate, toDate, feed.googleCalendarId);
+      } else if (feed.type === "apple" && feed.appleCalendarId) {
+        const { fetchAppleCalendarEvents } = require("./AppleCalendarService");
+        rawEvents = await fetchAppleCalendarEvents(feed.appleCalendarId, fromDate, toDate);
       } else if (feed.type === "ical" && feed.account) {
         rawEvents = await fetchICalEvents(feed.account);
       } else if (feed.type === "native") {
@@ -656,7 +700,10 @@ export async function syncAllFeeds(
       }));
 
       allEvents.push(...stamped);
-      feed.lastSynced = Date.now();
+      // Feeds from the Zustand+Immer store are frozen — mutating `feed.lastSynced`
+      // directly throws in dev and was swallowing successful sync results. Route
+      // through the store action instead.
+      useAppStore.getState().updateFeed(feed.id, { lastSynced: Date.now() });
     } catch (err) {
       console.log(`[Sync] Failed to sync feed ${feed.name}:`, err);
     }
@@ -667,8 +714,20 @@ export async function syncAllFeeds(
   return allEvents;
 }
 
-/** Load cached events when offline or before first sync */
+/** Load cached events when offline or before first sync.
+ *  JSON.parse is deferred via setImmediate to avoid blocking the main thread
+ *  on large event caches during app startup. */
 export async function loadCachedEvents(): Promise<CalendarEvent[]> {
   const raw = await AsyncStorage.getItem(SYNC_CACHE_KEY);
-  return raw ? JSON.parse(raw) : [];
+  if (!raw) return [];
+  return new Promise((resolve) => {
+    setImmediate(() => {
+      try {
+        resolve(JSON.parse(raw));
+      } catch (err) {
+        console.warn("[Sync] Failed to parse cached events:", err);
+        resolve([]);
+      }
+    });
+  });
 }

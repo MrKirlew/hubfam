@@ -1,5 +1,6 @@
 package expo.modules.appmanager
 
+import android.app.AlarmManager
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
@@ -181,6 +182,23 @@ class AppManagerModule : Module() {
       val activity = appContext.currentActivity ?: throw Error("No active activity")
       val brightness = activity.window.attributes.screenBrightness
       if (brightness < 0) 0.5 else brightness.toDouble()
+    }
+
+    // ── Exact alarm permission (Android 12 / API 31+) ────────────────────
+    // SCHEDULE_EXACT_ALARM is the permission that lets us deliver
+    // notifications at the exact wall-clock time the user set. On Android
+    // 14+ the user must grant it via Settings; this function is how the
+    // JS side checks the current state without showing the prompt again.
+    AsyncFunction("canScheduleExactAlarms") {
+      val context = appContext.reactContext ?: throw Error("Context not available")
+      // SCHEDULE_EXACT_ALARM only exists on API 31+. Below that, exact
+      // alarms are auto-permitted, so we report `true` to skip the prompt.
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+        return@AsyncFunction true
+      }
+      val am = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+        ?: return@AsyncFunction false
+      am.canScheduleExactAlarms()
     }
   }
 

@@ -126,7 +126,7 @@ export default function WeatherBar() {
 
   if (!weather) {
     return (
-      <TouchableOpacity style={s.container} onPress={initLocation}>
+      <TouchableOpacity style={s.container} onPress={initLocation} accessibilityRole="button" accessibilityLabel="Loading weather, tap to retry">
         <Text style={s.loadingText}>Loading weather...</Text>
       </TouchableOpacity>
     );
@@ -146,6 +146,9 @@ export default function WeatherBar() {
         );
       }}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={`Weather: ${weather.temp} degrees, ${label}, ${locationName}`}
+      accessibilityHint="Tap for weather details"
     >
       <Text style={s.icon}>{icon}</Text>
       <Text style={s.temp}>{weather.temp}°</Text>

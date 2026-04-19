@@ -118,15 +118,30 @@ export default function CalendarScreen() {
 
         {/* Week navigation */}
         <View style={s.weekNav}>
-          <TouchableOpacity onPress={() => setWeekOffset(w => w - 1)} style={s.navBtn}>
+          <TouchableOpacity
+            onPress={() => setWeekOffset(w => w - 1)}
+            style={s.navBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Previous week"
+          >
             <Ionicons name="chevron-back" size={20} color={t.accent} />
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => { setWeekOffset(0); setSelectedDate(new Date()); }} style={s.todayBtn}>
+          <TouchableOpacity
+            onPress={() => { setWeekOffset(0); setSelectedDate(new Date()); }}
+            style={s.todayBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Go to today"
+          >
             <Text style={s.todayBtnText}>Today</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => setWeekOffset(w => w + 1)} style={s.navBtn}>
+          <TouchableOpacity
+            onPress={() => setWeekOffset(w => w + 1)}
+            style={s.navBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Next week"
+          >
             <Ionicons name="chevron-forward" size={20} color={t.accent} />
           </TouchableOpacity>
         </View>
@@ -147,6 +162,9 @@ export default function CalendarScreen() {
                   isToday && !isSelected && s.dayCellToday,
                 ]}
                 onPress={() => setSelectedDate(d)}
+                accessibilityRole="button"
+                accessibilityLabel={`${DAY_NAMES[d.getDay()]} ${d.getDate()}${isToday ? ", today" : ""}${evCount > 0 ? `, ${evCount} event${evCount > 1 ? "s" : ""}` : ""}`}
+                accessibilityState={{ selected: isSelected }}
               >
                 <Text style={[s.dayName, isSelected && s.dayTextSelected]}>
                   {DAY_NAMES[d.getDay()]}
@@ -171,6 +189,9 @@ export default function CalendarScreen() {
           <TouchableOpacity
             style={[s.filterChip, enabledMembers.has("all") && s.filterChipActive]}
             onPress={() => toggleMember("all")}
+            accessibilityRole="button"
+            accessibilityLabel="Filter all members"
+            accessibilityState={{ selected: enabledMembers.has("all") }}
           >
             <Text style={[s.filterChipText, enabledMembers.has("all") && s.filterChipTextActive]}>All</Text>
           </TouchableOpacity>
@@ -182,6 +203,9 @@ export default function CalendarScreen() {
                 enabledMembers.has(m.id) && { backgroundColor: m.color + "22", borderColor: m.color + "55" },
               ]}
               onPress={() => toggleMember(m.id)}
+              accessibilityRole="button"
+              accessibilityLabel={`Filter ${m.name}`}
+              accessibilityState={{ selected: enabledMembers.has(m.id) }}
             >
               <View style={[s.filterDot, { backgroundColor: m.color }]} />
               <Text style={[s.filterChipText, enabledMembers.has(m.id) && { color: m.color }]}>{m.name}</Text>

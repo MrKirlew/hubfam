@@ -59,7 +59,7 @@ export default function EventTicker() {
   const isImportant = todayEvents.length >= 3;
 
   return (
-    <View style={[s.container, isImportant && blink && s.importantBg]}>
+    <View style={[s.container, isImportant && blink && s.importantBg]} accessibilityRole="text" accessibilityLabel={`Today's events: ${tickerText}`}>
       {isImportant && (
         <Text style={s.urgentDot}>{blink ? "\u26A0" : " "}</Text>
       )}

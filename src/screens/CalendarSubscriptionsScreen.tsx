@@ -123,10 +123,16 @@ export default function CalendarSubscriptionsScreen() {
       <ScrollView contentContainerStyle={s.scroll}>
         <View style={s.headerRow}>
           <Text style={s.header}>Calendar Subscriptions</Text>
-          <TouchableOpacity style={s.addBtn} onPress={() => {
-            setAddEmail(googleAccounts[0] || "");
-            setShowAddModal(true);
-          }}>
+          <TouchableOpacity
+            style={s.addBtn}
+            onPress={() => {
+              setAddEmail(googleAccounts[0] || "");
+              setShowAddModal(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Subscribe to calendar"
+            accessibilityHint="Double tap to add a new calendar subscription"
+          >
             <Ionicons name="add" size={20} color={t.accent} />
             <Text style={s.addBtnText}>Subscribe</Text>
           </TouchableOpacity>
@@ -161,7 +167,12 @@ export default function CalendarSubscriptionsScreen() {
                 <Ionicons name="logo-google" size={16} color={t.accent} />
                 <Text style={s.accountEmail}>{email}</Text>
                 {member && <Text style={s.accountMember}>{member.name}</Text>}
-                <TouchableOpacity onPress={loadCalendars} style={s.refreshBtn}>
+                <TouchableOpacity
+                  onPress={loadCalendars}
+                  style={s.refreshBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Refresh calendars"
+                >
                   <Ionicons name="refresh-outline" size={16} color={t.textSub} />
                 </TouchableOpacity>
               </View>
@@ -185,6 +196,8 @@ export default function CalendarSubscriptionsScreen() {
                         onPress={() => handleUnsubscribe(email, cal)}
                         style={s.unsubBtn}
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Unsubscribe from ${cal.summary}`}
                       >
                         <Ionicons name="close-circle-outline" size={20} color={t.textFaint} />
                       </TouchableOpacity>
@@ -218,6 +231,8 @@ export default function CalendarSubscriptionsScreen() {
               onChangeText={setAddCalId}
               autoCapitalize="none"
               keyboardType="email-address"
+              accessibilityRole="text"
+              accessibilityLabel="Calendar ID or email"
             />
 
             {googleAccounts.length > 1 && (
@@ -230,6 +245,9 @@ export default function CalendarSubscriptionsScreen() {
                         key={email}
                         style={[s.chip, addEmail === email && s.chipActive]}
                         onPress={() => setAddEmail(email)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Use account ${email}`}
+                        accessibilityState={{ selected: addEmail === email }}
                       >
                         <Text style={[s.chipText, addEmail === email && s.chipTextActive]}>{email}</Text>
                       </TouchableOpacity>
@@ -245,10 +263,20 @@ export default function CalendarSubscriptionsScreen() {
             </Text>
 
             <View style={s.modalButtons}>
-              <TouchableOpacity style={s.modalCancelBtn} onPress={() => setShowAddModal(false)}>
+              <TouchableOpacity
+                style={s.modalCancelBtn}
+                onPress={() => setShowAddModal(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+              >
                 <Text style={s.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={s.modalSaveBtn} onPress={handleSubscribe}>
+              <TouchableOpacity
+                style={s.modalSaveBtn}
+                onPress={handleSubscribe}
+                accessibilityRole="button"
+                accessibilityLabel="Subscribe to calendar"
+              >
                 <Text style={s.modalSaveText}>Subscribe</Text>
               </TouchableOpacity>
             </View>

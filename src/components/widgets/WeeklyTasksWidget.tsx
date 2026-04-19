@@ -120,7 +120,7 @@ export default function WeeklyTasksWidget({ compact }: { compact?: boolean }) {
   };
 
   return (
-    <View style={s.container}>
+    <View style={s.container} accessibilityLiveRegion="polite">
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
         <Text style={[s.title, compact && { fontSize: 14, marginBottom: 6 }]}>This Week</Text>
         {!compact && (
@@ -135,6 +135,9 @@ export default function WeeklyTasksWidget({ compact }: { compact?: boolean }) {
                 setSelectedDates([]);
               }
             }}
+            accessibilityRole="button"
+            accessibilityLabel={multiSelectMode ? "Finish multi-select" : "Select multiple days"}
+            accessibilityState={{ selected: multiSelectMode }}
           >
             <Ionicons name="checkbox-outline" size={14} color={multiSelectMode ? t.accent : t.textFaint} />
             <Text style={{ fontSize: 10, color: multiSelectMode ? t.accent : t.textFaint }}>
@@ -156,6 +159,10 @@ export default function WeeklyTasksWidget({ compact }: { compact?: boolean }) {
             onPress={() => handleDayTap(day.date)}
             onLongPress={() => { setMultiSelectMode(true); toggleSelect(day.date); }}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={`${day.dayName} ${day.label}${day.isToday ? ", today" : ""}, ${day.eventCount} events, ${day.taskCount} tasks`}
+            accessibilityState={{ selected: selectedDates.includes(day.date) }}
+            accessibilityHint="Tap to view, long press to select"
           >
             <Text style={[s.dayName, compact && { fontSize: 9 }, day.isToday && s.todayText]}>
               {day.dayName}
@@ -193,15 +200,15 @@ export default function WeeklyTasksWidget({ compact }: { compact?: boolean }) {
       {multiSelectMode && selectedDates.length > 0 && (
         <View style={s.actionBar}>
           <Text style={s.actionText}>{selectedDates.length} day{selectedDates.length > 1 ? "s" : ""} selected</Text>
-          <TouchableOpacity style={s.actionBtn} onPress={openSelectedDaysPopup}>
+          <TouchableOpacity style={s.actionBtn} onPress={openSelectedDaysPopup} accessibilityRole="button" accessibilityLabel="View selected days">
             <Ionicons name="eye-outline" size={14} color={t.accent} />
             <Text style={s.actionBtnText}>View</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.actionBtn} onPress={() => { openSelectedDaysPopup(); setShowAddEvent(true); }}>
+          <TouchableOpacity style={s.actionBtn} onPress={() => { openSelectedDaysPopup(); setShowAddEvent(true); }} accessibilityRole="button" accessibilityLabel="Add event to selected days">
             <Ionicons name="add-circle-outline" size={14} color={t.success} />
             <Text style={[s.actionBtnText, { color: t.success }]}>Add Event</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.actionBtn} onPress={() => { setSelectedDates([]); setMultiSelectMode(false); }}>
+          <TouchableOpacity style={s.actionBtn} onPress={() => { setSelectedDates([]); setMultiSelectMode(false); }} accessibilityRole="button" accessibilityLabel="Clear selection">
             <Ionicons name="close-circle-outline" size={14} color={t.textSub} />
             <Text style={s.actionBtnText}>Clear</Text>
           </TouchableOpacity>
@@ -227,7 +234,7 @@ export default function WeeklyTasksWidget({ compact }: { compact?: boolean }) {
 
       {/* Day detail modal */}
       <Modal visible={detailDate !== null} transparent animationType="fade" onRequestClose={() => setDetailDate(null)}>
-        <TouchableOpacity style={s.backdrop} activeOpacity={1} onPress={() => setDetailDate(null)}>
+        <TouchableOpacity style={s.backdrop} activeOpacity={1} onPress={() => setDetailDate(null)} accessibilityRole="button" accessibilityLabel="Close day detail">
           <View style={s.detailSheet}>
             <View style={s.detailHeader}>
               <Text style={s.detailTitle}>
@@ -236,7 +243,7 @@ export default function WeeklyTasksWidget({ compact }: { compact?: boolean }) {
                   : `${selectedDayInfo?.dayName}, ${selectedDayInfo?.label}`}
               </Text>
               <View style={{ flexDirection: "row", gap: 8 }}>
-                <TouchableOpacity onPress={() => { setShowAddEvent(true); }}>
+                <TouchableOpacity onPress={() => { setShowAddEvent(true); }} accessibilityRole="button" accessibilityLabel="Add event">
                   <Ionicons name="add-circle" size={24} color={t.accent} />
                 </TouchableOpacity>
               </View>
@@ -258,7 +265,7 @@ export default function WeeklyTasksWidget({ compact }: { compact?: boolean }) {
                       <Text style={s.eTitle}>{e.title}</Text>
                       <Text style={s.eTime}>{e.allDay ? "All day" : formatTime(e.time)}</Text>
                     </View>
-                    <TouchableOpacity onPress={() => handleDeleteEvent(e.id, e.title)}>
+                    <TouchableOpacity onPress={() => handleDeleteEvent(e.id, e.title)} accessibilityRole="button" accessibilityLabel={`Delete event ${e.title}`}>
                       <Ionicons name="trash-outline" size={16} color={t.error} />
                     </TouchableOpacity>
                   </View>
@@ -278,17 +285,18 @@ export default function WeeklyTasksWidget({ compact }: { compact?: boolean }) {
                   onSubmitEditing={handleAddEvent}
                   autoFocus
                   returnKeyType="done"
+                  accessibilityLabel="New event name"
                 />
-                <TouchableOpacity onPress={handleAddEvent}>
+                <TouchableOpacity onPress={handleAddEvent} accessibilityRole="button" accessibilityLabel="Confirm add event">
                   <Ionicons name="checkmark-circle" size={24} color={t.accent} />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => { setShowAddEvent(false); setNewEventTitle(""); }}>
+                <TouchableOpacity onPress={() => { setShowAddEvent(false); setNewEventTitle(""); }} accessibilityRole="button" accessibilityLabel="Cancel add event">
                   <Ionicons name="close-circle" size={24} color={t.textFaint} />
                 </TouchableOpacity>
               </View>
             )}
 
-            <TouchableOpacity style={s.closeBtn} onPress={() => setDetailDate(null)}>
+            <TouchableOpacity style={s.closeBtn} onPress={() => setDetailDate(null)} accessibilityRole="button" accessibilityLabel="Close">
               <Text style={s.closeText}>Close</Text>
             </TouchableOpacity>
           </View>

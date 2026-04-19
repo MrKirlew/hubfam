@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import type { WidgetConfig } from "../store/appStore";
 import { useTheme } from "../hooks/useTheme";
 import type { Theme } from "../theme";
+import ErrorBoundary from "./ErrorBoundary";
 import ClockWidget from "./widgets/ClockWidget";
 import CalendarWidget from "./widgets/CalendarWidget";
 import TodoListWidget from "./widgets/TodoListWidget";
@@ -69,6 +70,8 @@ export default function WidgetPanel({ config, onConfigure, onClose, compact: com
             onPress={onClose}
             activeOpacity={0.6}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Close ${config.type} widget`}
           >
             <Ionicons name="close" size={12} color={t.textFaint} />
           </TouchableOpacity>
@@ -79,12 +82,16 @@ export default function WidgetPanel({ config, onConfigure, onClose, compact: com
           onPress={onConfigure}
           activeOpacity={0.6}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          accessibilityRole="button"
+          accessibilityLabel={`Configure ${config.type} widget`}
         >
           <Ionicons name="pencil-outline" size={14} color={t.accent} />
         </TouchableOpacity>
       </View>
       <View style={s.content}>
-        {renderWidget()}
+        <ErrorBoundary fallbackLabel={`${config.type} widget error`}>
+          {renderWidget()}
+        </ErrorBoundary>
       </View>
     </View>
   );

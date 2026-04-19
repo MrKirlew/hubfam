@@ -8,28 +8,39 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import { persist, createJSONStorage } from "zustand/middleware";
+import { migrateIfNeeded } from "../services/PinService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+export type AuthProvider = "google" | "apple";
+
+export interface LinkedAccount {
+  provider:     AuthProvider;
+  email:        string;        // Google email or Apple ID email
+  displayName?: string;        // "Mom's Google" or "Dad's Apple ID"
+  linkedAt:     number;        // unix ms
+}
 
 export interface Member {
   id:       string;
   name:     string;
   initials: string;
   color:    string;
-  pin?:     string;      // 4-digit fallback PIN
   role:     "adult" | "child"; // member type for access control
   isAdmin:  boolean;     // admins can manage members, settings, feeds, reminders
+  linkedAccounts?: LinkedAccount[]; // Google/Apple accounts linked to this member
 }
 
 export interface CalendarFeed {
   id:         string;
   name:       string;
-  type:       "gcal" | "ical" | "manual";
+  type:       "gcal" | "ical" | "apple" | "manual";
   memberId:   string | null;
   color:      string;
   account:           string | null;
-  googleCalendarId?: string;        // specific Google calendar ID (e.g. "primary", "work@group.calendar.google.com")
+  googleCalendarId?: string;        // specific Google calendar ID
+  appleCalendarId?:  string;        // iOS system calendar ID for iCloud calendars
   enabled:    boolean;
   lastSynced: number | null;
 }
@@ -46,8 +57,13 @@ export interface CalendarEvent {
   reminder:   string;
   location?:  string;
   notes?:     string;
-  source:     "gcal" | "ical" | "native" | "manual";
+  source:     "gcal" | "ical" | "apple" | "native" | "manual";
   externalId: string | null;
+  // Recurrence stored locally only. SyncHelper does not yet translate to RRULE
+  // for Google Calendar — recurring events sync as single events. See TECH_DEBT.
+  recurrence?:         TaskRecurrence;
+  recurrenceDays?:     number[];   // 0=Sun..6=Sat (used for weekly w/ specific days)
+  recurrenceInterval?: number;     // "every N weeks/months"
 }
 
 export interface TodoList {
@@ -63,6 +79,8 @@ export interface TodoList {
   lastSynced?:       number;        // unix ms of last sync
 }
 
+export type TaskRecurrence = "none" | "daily" | "weekly" | "weekends" | "monthly";
+
 export interface TodoItem {
   id:            string;
   text:          string;
@@ -70,8 +88,11 @@ export interface TodoItem {
   assignedTo?:   string;
   googleTaskId?: string;            // Google Tasks item ID for two-way sync
   dueDate?:      string;            // "YYYY-MM-DD"
+  dueTime?:      string;            // "HH:MM" — due by this time
   notes?:        string;
   lastModified?: number;            // unix ms
+  recurrence?:      TaskRecurrence; // recurring schedule
+  recurrenceInterval?: number;      // for "every N days" custom interval
 }
 
 export interface PendingTaskMutation {
@@ -188,6 +209,10 @@ interface AppState {
   lockMuteAlarms:      boolean;        // when locked, silence alarms and reminders
   pendingChildAdmin:   { childId: string; approvedBy: string[] } | null; // child pending admin approval
   weatherLocation:     WeatherLocation | null;
+  showWidgetDates:     boolean;        // show date next to Today/Tomorrow widget headers
+  rolloverIncomplete:  boolean;        // roll uncompleted tasks to next day at midnight
+  smartInputEnabled:   boolean;        // QuickAddBar: parse natural-language input & clarify missing fields
+  exactAlarmPromptShown: boolean;      // Android 14+: have we shown the SCHEDULE_EXACT_ALARM explainer once? See DEBT-041.
 
   // Sync state
   isSyncing:     boolean;
@@ -222,10 +247,16 @@ interface AppState {
   setLockMuteAlarms:      (val: boolean) => void;
   setPendingChildAdmin:   (val: { childId: string; approvedBy: string[] } | null) => void;
   setWeatherLocation:     (loc: WeatherLocation | null) => void;
+  setShowWidgetDates:     (val: boolean) => void;
+  setRolloverIncomplete:  (val: boolean) => void;
+  setSmartInputEnabled:   (val: boolean) => void;
+  setExactAlarmPromptShown: (val: boolean) => void;
 
   addMember:          (m: Member) => void;
   updateMember:       (id: string, patch: Partial<Member>) => void;
   removeMember:       (id: string) => void;
+  linkAccount:        (memberId: string, account: LinkedAccount) => void;
+  unlinkAccount:      (memberId: string, provider: AuthProvider, email: string) => void;
 
   addFeed:            (f: CalendarFeed) => void;
   updateFeed:         (id: string, patch: Partial<CalendarFeed>) => void;
@@ -236,6 +267,7 @@ interface AppState {
   setEvents:          (events: CalendarEvent[]) => void;
   addEvent:           (e: CalendarEvent) => void;
   removeEvent:        (id: string) => void;
+  updateEvent:        (id: string, patch: Partial<CalendarEvent>) => void;
 
   addList:            (l: TodoList) => void;
   removeList:         (id: string) => void;
@@ -277,7 +309,7 @@ export const useAppStore = create<AppState>()(
   persist(
     immer((set) => ({
       _hasHydrated:  false,
-      isLocked:      true,
+      isLocked:      false,
       activeProfile: "all",
       hubName:              "Family Hub",
       notificationsEnabled: true,
@@ -293,6 +325,10 @@ export const useAppStore = create<AppState>()(
       lockMuteAlarms:      false,
       pendingChildAdmin:   null,
       weatherLocation:     { latitude: 0, longitude: 0, name: "", isAuto: true },
+      showWidgetDates:     true,
+      rolloverIncomplete:  true,
+      smartInputEnabled:   true,
+      exactAlarmPromptShown: false,
       isSyncing:           false,
       lastSyncTime:        null,
       members:         SEED_MEMBERS,
@@ -346,6 +382,10 @@ export const useAppStore = create<AppState>()(
       setLockMuteAlarms:      (val) => set(s => { s.lockMuteAlarms = val; }),
       setPendingChildAdmin:   (val) => set(s => { s.pendingChildAdmin = val; }),
       setWeatherLocation:     (loc) => set(s => { s.weatherLocation = loc; }),
+      setShowWidgetDates:     (val) => set(s => { s.showWidgetDates = val; }),
+      setRolloverIncomplete:  (val) => set(s => { s.rolloverIncomplete = val; }),
+      setSmartInputEnabled:   (val) => set(s => { s.smartInputEnabled = val; }),
+      setExactAlarmPromptShown: (val) => set(s => { s.exactAlarmPromptShown = val; }),
       setSyncing:             (val) => set(s => { s.isSyncing = val; }),
       setLastSyncTime:        (ts) => set(s => { s.lastSyncTime = ts; }),
 
@@ -355,6 +395,24 @@ export const useAppStore = create<AppState>()(
         if (i !== -1) Object.assign(s.members[i], patch);
       }),
       removeMember: (id) => set(s => { s.members = s.members.filter(m => m.id !== id); }),
+      linkAccount: (memberId, account) => set(s => {
+        const member = s.members.find(m => m.id === memberId);
+        if (member) {
+          if (!member.linkedAccounts) member.linkedAccounts = [];
+          const exists = member.linkedAccounts.find(
+            a => a.provider === account.provider && a.email === account.email
+          );
+          if (!exists) member.linkedAccounts.push(account);
+        }
+      }),
+      unlinkAccount: (memberId, provider, email) => set(s => {
+        const member = s.members.find(m => m.id === memberId);
+        if (member?.linkedAccounts) {
+          member.linkedAccounts = member.linkedAccounts.filter(
+            a => !(a.provider === provider && a.email === email)
+          );
+        }
+      }),
 
       addFeed:    (f) => set(s => { s.feeds.push(f); }),
       updateFeed: (id, patch) => set(s => {
@@ -368,6 +426,10 @@ export const useAppStore = create<AppState>()(
       setEvents:    (events) => set(s => { s.events = events; }),
       addEvent:     (e) => set(s => { s.events.push(e); }),
       removeEvent:  (id) => set(s => { s.events = s.events.filter(e => e.id !== id); }),
+      updateEvent:  (id, patch) => set(s => {
+        const ev = s.events.find(e => e.id === id);
+        if (ev) Object.assign(ev, patch);
+      }),
 
       addList:      (l) => set(s => { s.lists.push(l); }),
       removeList:   (id) => set(s => { s.lists = s.lists.filter(l => l.id !== id); }),
@@ -443,16 +505,67 @@ export const useAppStore = create<AppState>()(
       onRehydrateStorage: () => {
         return (state) => {
           useAppStore.setState({ _hasHydrated: true });
-          // Migrate existing members: add role/isAdmin defaults if missing
+          // Migrate existing members: add role/isAdmin/linkedAccounts defaults if missing
           if (state?.members) {
-            const needsUpdate = state.members.some((m: any) => !m.role);
-            if (needsUpdate) {
+            const needsMigration = state.members.some((m: any) => !m.role || !m.linkedAccounts);
+            if (needsMigration) {
               const updated = state.members.map((m: any) => ({
                 ...m,
                 role: m.role || "adult",
-                isAdmin: m.isAdmin ?? (state.members.indexOf(m) === 0), // first member defaults to admin
+                isAdmin: m.isAdmin ?? (state.members.indexOf(m) === 0),
+                linkedAccounts: m.linkedAccounts || [],
               }));
               useAppStore.setState({ members: updated });
+            }
+          }
+          // Migrate plaintext PIN to SecureStore. If SecureStore is unavailable
+          // (locked keychain, missing entitlement, transient device error),
+          // leave hubPin untouched so the legacy unlock fallback in
+          // DashboardScreen + PinService.verifyHubPin keeps the user able to
+          // unlock with their existing PIN. We never log the raw PIN value or
+          // the raw error object — only a fixed string — to avoid leaking the
+          // PIN through stack traces that some libraries echo back.
+          if (state?.hubPin && state.hubPin !== "SECURE") {
+            migrateIfNeeded(state.hubPin)
+              .then(() => {
+                useAppStore.setState({ hubPin: "SECURE" });
+              })
+              .catch(() => {
+                console.warn(
+                  "[Store] SecureStore PIN migration failed — legacy unlock fallback active."
+                );
+              });
+          }
+          // Prune old events: keep only last 6 months to prevent unbounded growth
+          if (state?.events) {
+            const sixMonthsAgo = new Date();
+            sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+            const cutoff = sixMonthsAgo.toISOString().substring(0, 10);
+            const pruned = state.events.filter((e: any) => !e.date || e.date >= cutoff);
+            if (pruned.length < state.events.length) {
+              console.log(`[Store] Pruned ${state.events.length - pruned.length} old events (before ${cutoff})`);
+              useAppStore.setState({ events: pruned });
+            }
+          }
+          // Cap pending task mutations to prevent queue buildup
+          if (state?.pendingTaskMutations && state.pendingTaskMutations.length > 100) {
+            const trimmed = state.pendingTaskMutations.slice(-100);
+            console.log(`[Store] Trimmed pending mutations from ${state.pendingTaskMutations.length} to 100`);
+            useAppStore.setState({ pendingTaskMutations: trimmed });
+          }
+          // Cap list items per list to 500
+          if (state?.lists) {
+            let capped = false;
+            const cappedLists = state.lists.map((l: any) => {
+              if (l.items && l.items.length > 500) {
+                capped = true;
+                return { ...l, items: l.items.slice(0, 500) };
+              }
+              return l;
+            });
+            if (capped) {
+              console.log("[Store] Capped list items to 500 per list");
+              useAppStore.setState({ lists: cappedLists });
             }
           }
           // Migrate cleaning items: add new defaults that don't exist yet

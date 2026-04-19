@@ -87,3 +87,20 @@ export async function setScreenBrightness(brightness: number): Promise<boolean> 
 export async function getScreenBrightness(): Promise<number> {
   return AppManagerModule.getScreenBrightness();
 }
+
+// ── Exact alarm permission (Android 12+) ──────────────────────────────
+
+/**
+ * Check whether the app currently has SCHEDULE_EXACT_ALARM permission.
+ *
+ * On Android 12+ (API 31+) this calls AlarmManager.canScheduleExactAlarms().
+ * On older Android versions, exact alarms are auto-permitted and this
+ * returns `true` without invoking the system call.
+ *
+ * Used by ExactAlarmService to skip the one-time explainer for users who
+ * have already granted the permission (or who are on a version where it
+ * doesn't apply). See DEBT-042.
+ */
+export async function canScheduleExactAlarms(): Promise<boolean> {
+  return AppManagerModule.canScheduleExactAlarms();
+}

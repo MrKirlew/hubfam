@@ -86,6 +86,8 @@ export default function WidgetSelector({ visible, panelIndex, onClose }: Props) 
                     style={s.optionRow}
                     onPress={() => handleSelectType(opt.type)}
                     activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${opt.label}: ${opt.desc}`}
                   >
                     <Ionicons name={opt.icon as any} size={22} color={t.accent} />
                     <View style={s.optionInfo}>
@@ -104,6 +106,8 @@ export default function WidgetSelector({ visible, panelIndex, onClose }: Props) 
                   style={s.optionRow}
                   onPress={() => handleSelectList(undefined)}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="All Lists Summary: Overview of all to-do lists"
                 >
                   <Text style={s.optionEmoji}>📋</Text>
                   <View style={s.optionInfo}>
@@ -117,6 +121,8 @@ export default function WidgetSelector({ visible, panelIndex, onClose }: Props) 
                     style={s.optionRow}
                     onPress={() => handleSelectList(l.id)}
                     activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${l.name}: ${l.items.length} items`}
                   >
                     <Text style={s.optionEmoji}>{l.icon}</Text>
                     <View style={s.optionInfo}>
@@ -128,7 +134,7 @@ export default function WidgetSelector({ visible, panelIndex, onClose }: Props) 
               </ScrollView>
             </>
           )}
-          <TouchableOpacity style={s.cancelBtn} onPress={resetAndClose}>
+          <TouchableOpacity style={s.cancelBtn} onPress={resetAndClose} accessibilityRole="button" accessibilityLabel="Cancel widget selection">
             <Text style={s.cancelText}>Cancel</Text>
           </TouchableOpacity>
         </View>

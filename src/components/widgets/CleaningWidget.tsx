@@ -5,6 +5,7 @@ import { useAppStore } from "../../store/appStore";
 import type { CleaningItem } from "../../store/appStore";
 import { useTheme } from "../../hooks/useTheme";
 import type { Theme } from "../../theme";
+import { verifyHubPin, isLockedOut, getLockoutRemainingMs, isDigitsOnly } from "../../services/PinService";
 
 function formatCleanedTime(ms: number): string {
   const d = new Date(ms);
@@ -84,18 +85,27 @@ export default function CleaningWidget({ compact }: { compact?: boolean }) {
   };
 
   const handlePinCheck = (digit: string) => {
+    if (!isDigitsOnly(digit)) return;
     const next = pinEntry + digit;
     setPinEntry(next);
     if (next.length === 4) {
-      if (next === hubPin) {
-        setPinPrompt(false);
+      if (isLockedOut()) {
+        const secs = Math.ceil(getLockoutRemainingMs() / 1000);
+        Alert.alert("Too Many Attempts", `Try again in ${secs} seconds.`);
         setPinEntry("");
-        setHistoryItem(pendingHistoryItem);
-        setPendingHistoryItem(null);
-      } else {
-        setPinEntry("");
-        Alert.alert("Wrong PIN", "Incorrect PIN. Try again.");
+        return;
       }
+      verifyHubPin(next).then((match) => {
+        if (match) {
+          setPinPrompt(false);
+          setPinEntry("");
+          setHistoryItem(pendingHistoryItem);
+          setPendingHistoryItem(null);
+        } else {
+          setPinEntry("");
+          Alert.alert("Wrong PIN", "Incorrect PIN. Try again.");
+        }
+      });
     }
   };
 
@@ -189,10 +199,10 @@ export default function CleaningWidget({ compact }: { compact?: boolean }) {
   };
 
   return (
-    <View style={s.container}>
+    <View style={s.container} accessibilityLiveRegion="polite">
       <View style={s.header}>
         <Text style={s.title}>Cleaning</Text>
-        <TouchableOpacity onPress={() => setShowAdd(true)}>
+        <TouchableOpacity onPress={() => setShowAdd(true)} accessibilityRole="button" accessibilityLabel="Add cleaning item">
           <Ionicons name="add-circle-outline" size={20} color={t.accent} />
         </TouchableOpacity>
       </View>
@@ -206,6 +216,9 @@ export default function CleaningWidget({ compact }: { compact?: boolean }) {
               onPress={() => startCleaning(item.id)}
               onLongPress={() => handleDelete(item.id, item.name)}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`${item.name}, ${status === "good" ? "clean" : status === "due" ? "due for cleaning" : "overdue for cleaning"}`}
+              accessibilityHint="Tap to mark as cleaned, long press to delete"
             >
               <View style={[s.statusDot, { backgroundColor: STATUS_COLORS[status] }]} />
               <Text style={s.itemIcon}>{item.icon}</Text>
@@ -225,13 +238,15 @@ export default function CleaningWidget({ compact }: { compact?: boolean }) {
                 )}
               </View>
               {item.log && item.log.length > 0 && item.lastCleaned && (
-                <TouchableOpacity onPress={() => openHistory(item)} style={s.historyBtn}>
+                <TouchableOpacity onPress={() => openHistory(item)} style={s.historyBtn} accessibilityRole="button" accessibilityLabel={`View cleaning history, ${item.log.length} entries`}>
                   <Text style={s.historyCount}>{item.log.length}</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity
                 style={[s.cleanBtn, { borderColor: STATUS_COLORS[status] }]}
                 onPress={() => startCleaning(item.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`Mark ${item.name} as cleaned`}
               >
                 <Ionicons name="checkmark" size={14} color={STATUS_COLORS[status]} />
               </TouchableOpacity>
@@ -245,18 +260,18 @@ export default function CleaningWidget({ compact }: { compact?: boolean }) {
 
       {/* Step 1: Member picker */}
       <Modal visible={showMemberPick} transparent animationType="fade" onRequestClose={() => setShowMemberPick(false)}>
-        <TouchableOpacity style={s.backdrop} activeOpacity={1} onPress={() => { setShowMemberPick(false); setCleaningItemId(null); }}>
+        <TouchableOpacity style={s.backdrop} activeOpacity={1} onPress={() => { setShowMemberPick(false); setCleaningItemId(null); }} accessibilityRole="button" accessibilityLabel="Close member picker">
           <View style={s.sheet}>
             <Text style={s.sheetTitle}>Who cleaned it?</Text>
             {members.map(m => (
-              <TouchableOpacity key={m.id} style={s.memberRow} onPress={() => handleMemberPicked(m.name)}>
+              <TouchableOpacity key={m.id} style={s.memberRow} onPress={() => handleMemberPicked(m.name)} accessibilityRole="button" accessibilityLabel={`${m.name}`}>
                 <View style={[s.memberAvatar, { borderColor: m.color }]}>
                   <Text style={[s.memberInitials, { color: m.color }]}>{m.initials}</Text>
                 </View>
                 <Text style={s.memberName}>{m.name}</Text>
               </TouchableOpacity>
             ))}
-            <TouchableOpacity style={s.closeBtn} onPress={() => { setShowMemberPick(false); setCleaningItemId(null); }}>
+            <TouchableOpacity style={s.closeBtn} onPress={() => { setShowMemberPick(false); setCleaningItemId(null); }} accessibilityRole="button" accessibilityLabel="Cancel">
               <Text style={s.closeText}>Cancel</Text>
             </TouchableOpacity>
           </View>
@@ -280,12 +295,13 @@ export default function CleaningWidget({ compact }: { compact?: boolean }) {
               onChangeText={setCleaningNotes}
               multiline
               autoFocus
+              accessibilityLabel="Cleaning notes"
             />
             <View style={s.notesActions}>
-              <TouchableOpacity style={s.skipBtn} onPress={handleSaveCleaning}>
+              <TouchableOpacity style={s.skipBtn} onPress={handleSaveCleaning} accessibilityRole="button" accessibilityLabel="Skip notes">
                 <Text style={s.skipText}>Skip</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={s.saveBtn} onPress={handleSaveCleaning}>
+              <TouchableOpacity style={s.saveBtn} onPress={handleSaveCleaning} accessibilityRole="button" accessibilityLabel="Save cleaning record">
                 <Ionicons name="checkmark-circle" size={18} color={t.textOnAccent} />
                 <Text style={s.saveText}>Save</Text>
               </TouchableOpacity>
@@ -296,7 +312,7 @@ export default function CleaningWidget({ compact }: { compact?: boolean }) {
 
       {/* History viewer */}
       <Modal visible={historyItem !== null} transparent animationType="fade" onRequestClose={() => setHistoryItem(null)}>
-        <TouchableOpacity style={s.backdrop} activeOpacity={1} onPress={() => setHistoryItem(null)}>
+        <TouchableOpacity style={s.backdrop} activeOpacity={1} onPress={() => setHistoryItem(null)} accessibilityRole="button" accessibilityLabel="Close history">
           <View style={s.historySheet}>
             <Text style={s.sheetTitle}>
               {historyItem?.icon} {historyItem?.name} — History
@@ -314,12 +330,14 @@ export default function CleaningWidget({ compact }: { compact?: boolean }) {
               )}
             </ScrollView>
             <View style={{ flexDirection: "row", gap: 12, marginTop: 12 }}>
-              <TouchableOpacity style={s.closeBtn} onPress={() => setHistoryItem(null)}>
+              <TouchableOpacity style={s.closeBtn} onPress={() => setHistoryItem(null)} accessibilityRole="button" accessibilityLabel="Close history">
                 <Text style={s.closeText}>Close</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[s.closeBtn, { backgroundColor: t.accentBg }]}
                 onPress={() => historyItem && exportLog(historyItem)}
+                accessibilityRole="button"
+                accessibilityLabel="Export cleaning log"
               >
                 <Ionicons name="share-outline" size={14} color={t.accent} />
                 <Text style={[s.closeText, { color: t.accent }]}> Export</Text>
@@ -352,6 +370,8 @@ export default function CleaningWidget({ compact }: { compact?: boolean }) {
                     if (d === "<") setPinEntry(p => p.slice(0, -1));
                     else if (d) handlePinCheck(d);
                   }}
+                  accessibilityRole={d ? "button" : "none"}
+                  accessibilityLabel={d === "<" ? "Delete" : d || undefined}
                 >
                   <Text style={{ fontSize: 18, fontWeight: "500", color: t.text }}>
                     {d === "<" ? "\u232B" : d}
@@ -359,7 +379,7 @@ export default function CleaningWidget({ compact }: { compact?: boolean }) {
                 </TouchableOpacity>
               ))}
             </View>
-            <TouchableOpacity style={s.closeBtn} onPress={() => { setPinPrompt(false); setPendingHistoryItem(null); }}>
+            <TouchableOpacity style={s.closeBtn} onPress={() => { setPinPrompt(false); setPendingHistoryItem(null); }} accessibilityRole="button" accessibilityLabel="Cancel PIN entry">
               <Text style={s.closeText}>Cancel</Text>
             </TouchableOpacity>
           </View>
@@ -378,11 +398,12 @@ export default function CleaningWidget({ compact }: { compact?: boolean }) {
               value={newName}
               onChangeText={setNewName}
               autoFocus
+              accessibilityLabel="Cleaning item name"
             />
             <Text style={s.fieldLabel}>Icon</Text>
             <View style={s.emojiRow}>
               {EMOJI_PICKS.map((e, i) => (
-                <TouchableOpacity key={i} style={[s.emojiBtn, newIcon === e && s.emojiBtnActive]} onPress={() => setNewIcon(e)}>
+                <TouchableOpacity key={i} style={[s.emojiBtn, newIcon === e && s.emojiBtnActive]} onPress={() => setNewIcon(e)} accessibilityRole="button" accessibilityLabel={`Select icon ${e}`} accessibilityState={{ selected: newIcon === e }}>
                   <Text style={s.emojiText}>{e}</Text>
                 </TouchableOpacity>
               ))}
@@ -390,16 +411,16 @@ export default function CleaningWidget({ compact }: { compact?: boolean }) {
             <Text style={s.fieldLabel}>How often?</Text>
             <View style={s.freqRow}>
               {FREQ_OPTIONS.map(f => (
-                <TouchableOpacity key={f.days} style={[s.freqBtn, newFreq === f.days && s.freqBtnActive]} onPress={() => setNewFreq(f.days)}>
+                <TouchableOpacity key={f.days} style={[s.freqBtn, newFreq === f.days && s.freqBtnActive]} onPress={() => setNewFreq(f.days)} accessibilityRole="button" accessibilityLabel={`Frequency: ${f.label}`} accessibilityState={{ selected: newFreq === f.days }}>
                   <Text style={[s.freqText, newFreq === f.days && s.freqTextActive]}>{f.label}</Text>
                 </TouchableOpacity>
               ))}
             </View>
             <View style={s.notesActions}>
-              <TouchableOpacity style={s.skipBtn} onPress={() => setShowAdd(false)}>
+              <TouchableOpacity style={s.skipBtn} onPress={() => setShowAdd(false)} accessibilityRole="button" accessibilityLabel="Cancel">
                 <Text style={s.skipText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={s.saveBtn} onPress={handleAddItem}>
+              <TouchableOpacity style={s.saveBtn} onPress={handleAddItem} accessibilityRole="button" accessibilityLabel="Add cleaning item">
                 <Text style={s.saveText}>Add Item</Text>
               </TouchableOpacity>
             </View>

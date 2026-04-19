@@ -134,7 +134,13 @@ export default function ListsScreen() {
         {/* Header */}
         <View style={s.headerRow}>
           <Text style={s.header}>Lists</Text>
-          <TouchableOpacity style={s.addListBtn} onPress={() => setShowNewList(true)}>
+          <TouchableOpacity
+            style={s.addListBtn}
+            onPress={() => setShowNewList(true)}
+            accessibilityRole="button"
+            accessibilityLabel="New list"
+            accessibilityHint="Double tap to create a new to-do list"
+          >
             <Ionicons name="add" size={20} color={t.accent} />
             <Text style={s.addListBtnText}>New List</Text>
           </TouchableOpacity>
@@ -166,10 +172,20 @@ export default function ListsScreen() {
                   </Text>
                 </View>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <TouchableOpacity onPress={() => handleShareList(list)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                  <TouchableOpacity
+                    onPress={() => handleShareList(list)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Share ${list.name} list`}
+                  >
                     <Ionicons name="share-outline" size={20} color={t.textSub} />
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleDeleteList(list)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                  <TouchableOpacity
+                    onPress={() => handleDeleteList(list)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete ${list.name} list`}
+                  >
                     <Ionicons name="trash-outline" size={20} color={t.textSub} />
                   </TouchableOpacity>
                   {totalCount > 0 && (
@@ -206,6 +222,10 @@ export default function ListsScreen() {
                     }
                   }}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${item.text}, ${item.done ? "completed" : "not completed"}`}
+                  accessibilityHint="Double tap to toggle completion"
+                  accessibilityState={{ checked: item.done }}
                 >
                   <Ionicons
                     name={item.done ? "checkbox" : "square-outline"}
@@ -226,10 +246,14 @@ export default function ListsScreen() {
                   onChangeText={tx => setNewItemText(prev => ({ ...prev, [list.id]: tx }))}
                   onSubmitEditing={() => handleAddItem(list.id)}
                   returnKeyType="done"
+                  accessibilityRole="text"
+                  accessibilityLabel={`Add item to ${list.name}`}
                 />
                 <TouchableOpacity
                   style={[s.addItemBtn, { backgroundColor: list.color + "22" }]}
                   onPress={() => handleAddItem(list.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Add item to ${list.name}`}
                 >
                   <Ionicons name="add" size={18} color={list.color} />
                 </TouchableOpacity>
@@ -261,6 +285,8 @@ export default function ListsScreen() {
               value={newListName}
               onChangeText={setNewListName}
               autoFocus
+              accessibilityRole="text"
+              accessibilityLabel="List name"
             />
 
             <Text style={s.modalLabel}>Icon</Text>
@@ -270,6 +296,9 @@ export default function ListsScreen() {
                   key={icon}
                   style={[s.iconOption, newListIcon === icon && s.iconOptionSelected]}
                   onPress={() => setNewListIcon(icon)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Icon ${icon}`}
+                  accessibilityState={{ selected: newListIcon === icon }}
                 >
                   <Text style={s.iconText}>{icon}</Text>
                 </TouchableOpacity>
@@ -283,6 +312,9 @@ export default function ListsScreen() {
                   key={color}
                   style={[s.colorOption, { backgroundColor: color }, newListColor === color && s.colorOptionSelected]}
                   onPress={() => setNewListColor(color)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Color ${color}`}
+                  accessibilityState={{ selected: newListColor === color }}
                 />
               ))}
             </View>
@@ -293,6 +325,9 @@ export default function ListsScreen() {
                 <TouchableOpacity
                   style={[s.assignChip, newListMemberId === null && s.assignChipActive]}
                   onPress={() => setNewListMemberId(null)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Assign to Family"
+                  accessibilityState={{ selected: newListMemberId === null }}
                 >
                   <Text style={[s.assignText, newListMemberId === null && s.assignTextActive]}>Family</Text>
                 </TouchableOpacity>
@@ -301,6 +336,9 @@ export default function ListsScreen() {
                     key={m.id}
                     style={[s.assignChip, newListMemberId === m.id && { backgroundColor: m.color + "22", borderColor: m.color + "55" }]}
                     onPress={() => setNewListMemberId(m.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Assign to ${m.name}`}
+                    accessibilityState={{ selected: newListMemberId === m.id }}
                   >
                     <Text style={[s.assignText, newListMemberId === m.id && { color: m.color }]}>{m.name}</Text>
                   </TouchableOpacity>
@@ -309,10 +347,20 @@ export default function ListsScreen() {
             </ScrollView>
 
             <View style={s.modalButtons}>
-              <TouchableOpacity style={s.modalCancelBtn} onPress={() => setShowNewList(false)}>
+              <TouchableOpacity
+                style={s.modalCancelBtn}
+                onPress={() => setShowNewList(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+              >
                 <Text style={s.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={s.modalCreateBtn} onPress={handleCreateList}>
+              <TouchableOpacity
+                style={s.modalCreateBtn}
+                onPress={handleCreateList}
+                accessibilityRole="button"
+                accessibilityLabel="Create list"
+              >
                 <Text style={s.modalCreateText}>Create</Text>
               </TouchableOpacity>
             </View>
@@ -340,6 +388,8 @@ export default function ListsScreen() {
                     paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: t.divider,
                   }}
                   onPress={() => emailList && handleEmailToMember(email, emailList)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Email list to ${m.name}`}
                 >
                   <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: m.color, alignItems: "center", justifyContent: "center", marginRight: 12 }}>
                     <Text style={{ color: t.textOnAccent, fontWeight: "700", fontSize: 13 }}>{m.initials}</Text>
@@ -354,10 +404,20 @@ export default function ListsScreen() {
             })}
 
             <View style={[s.modalButtons, { marginTop: 16 }]}>
-              <TouchableOpacity style={s.modalCancelBtn} onPress={() => { setShowEmailPicker(false); setEmailList(null); }}>
+              <TouchableOpacity
+                style={s.modalCancelBtn}
+                onPress={() => { setShowEmailPicker(false); setEmailList(null); }}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+              >
                 <Text style={s.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={s.modalCreateBtn} onPress={() => emailList && handleGenericShare(emailList)}>
+              <TouchableOpacity
+                style={s.modalCreateBtn}
+                onPress={() => emailList && handleGenericShare(emailList)}
+                accessibilityRole="button"
+                accessibilityLabel="Share via other method"
+              >
                 <Text style={s.modalCreateText}>Share Other</Text>
               </TouchableOpacity>
             </View>

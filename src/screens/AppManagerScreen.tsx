@@ -67,6 +67,10 @@ function AppRow({
       style={[s.appRow, isSelected && s.appRowSelected, app.isSystem && s.appRowSystem]}
       onPress={handlePress}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={`${app.appName}${app.isSystem ? ", system app" : ""}${isSelected ? ", selected" : ""}`}
+      accessibilityHint={app.isSystem ? "System app, cannot be uninstalled" : "Double tap to select for uninstall"}
+      accessibilityState={{ selected: isSelected }}
     >
       {/* Checkbox — disabled for system apps */}
       {isSafe ? (
@@ -125,6 +129,9 @@ function AppRow({
           openAppSettings(app.packageName).catch(() => {});
         }}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        accessibilityRole="button"
+        accessibilityLabel={`Manage ${app.appName}`}
+        accessibilityHint="Opens system settings for this app"
       >
         <Text style={s.manageBtnText}>Manage</Text>
       </TouchableOpacity>
@@ -150,7 +157,7 @@ export default function AppManagerScreen() {
     active: boolean; current: number; total: number; name: string;
   }>({ active: false, current: 0, total: 0, name: "" });
 
-  const searchTimer = useRef<ReturnType<typeof setTimeout>>();
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
   // ── Load apps ──────────────────────────────────────────────────────────
@@ -291,7 +298,7 @@ export default function AppManagerScreen() {
         }
         // Pause to let system dialog/page appear
         await new Promise((r) => setTimeout(r, 1200));
-      } catch (_err) {}
+      } catch (_err) { /* Silence errors — user sees system uninstall/settings dialog directly */ }
     }
 
     setUninstalling({ active: false, current: 0, total: 0, name: "" });
@@ -332,11 +339,22 @@ export default function AppManagerScreen() {
     <SafeAreaView style={s.container}>
       {/* Header */}
       <View style={s.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={s.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
           <Text style={s.backText}>← Back</Text>
         </TouchableOpacity>
         <Text style={s.title}>App Manager</Text>
-        <TouchableOpacity onPress={cycleSortBy} style={s.sortBtn}>
+        <TouchableOpacity
+          onPress={cycleSortBy}
+          style={s.sortBtn}
+          accessibilityRole="button"
+          accessibilityLabel={`Sort by ${sortLabel}`}
+          accessibilityHint="Double tap to change sort order"
+        >
           <Text style={s.sortText}>Sort: {sortLabel}</Text>
         </TouchableOpacity>
       </View>
@@ -351,6 +369,8 @@ export default function AppManagerScreen() {
           onChangeText={setSearch}
           autoCorrect={false}
           autoCapitalize="none"
+          accessibilityRole="search"
+          accessibilityLabel="Search apps"
         />
       </View>
 
@@ -359,6 +379,9 @@ export default function AppManagerScreen() {
         <TouchableOpacity
           style={[s.toggleBtn, showSystem && s.toggleBtnActive]}
           onPress={() => setShowSystem((v) => !v)}
+          accessibilityRole="switch"
+          accessibilityLabel="Show system apps"
+          accessibilityState={{ checked: showSystem }}
         >
           <Text style={[s.toggleText, showSystem && s.toggleTextActive]}>
             {showSystem ? "✓ System apps" : "System apps"}
@@ -366,10 +389,20 @@ export default function AppManagerScreen() {
         </TouchableOpacity>
 
         <View style={s.controlsRight}>
-          <TouchableOpacity onPress={selectAll} style={s.controlBtn}>
+          <TouchableOpacity
+            onPress={selectAll}
+            style={s.controlBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Select all apps"
+          >
             <Text style={s.controlBtnText}>Select All</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={deselectAll} style={s.controlBtn}>
+          <TouchableOpacity
+            onPress={deselectAll}
+            style={s.controlBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Deselect all apps"
+          >
             <Text style={s.controlBtnText}>Deselect All</Text>
           </TouchableOpacity>
         </View>
@@ -391,7 +424,6 @@ export default function AppManagerScreen() {
         <FlashList
           data={filteredApps}
           renderItem={renderItem}
-          estimatedItemSize={72}
           keyExtractor={(item) => item.packageName}
           extraData={selected}
           contentContainerStyle={s.listContent}
@@ -427,6 +459,8 @@ export default function AppManagerScreen() {
               style={s.manageSelectedBtn}
               onPress={() => runAction("manage")}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={`Manage ${selected.size} selected apps`}
             >
               <Text style={s.manageSelectedBtnText}>
                 Manage ({selected.size})
@@ -436,6 +470,8 @@ export default function AppManagerScreen() {
               style={s.uninstallBtn}
               onPress={showActionMenu}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={`Actions for ${selected.size} selected apps`}
             >
               <Text style={s.uninstallBtnText}>
                 Actions
@@ -532,7 +568,7 @@ function getStyles(t: Theme) {
     loadingText:   { fontSize: 14, color: t.textSub },
 
     // Progress overlay
-    progressOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: t.isDark ? "rgba(8,12,24,.85)" : "rgba(228,238,243,.85)",
+    progressOverlay: { ...StyleSheet.absoluteFill, backgroundColor: t.isDark ? "rgba(8,12,24,.85)" : "rgba(228,238,243,.85)",
                        alignItems: "center", justifyContent: "center", zIndex: 10 },
     progressCard:  { backgroundColor: t.modal, borderWidth: 1, borderColor: t.cardBorder,
                      borderRadius: 16, padding: 28, alignItems: "center", gap: 10, minWidth: 260 },

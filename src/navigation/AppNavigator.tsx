@@ -1,5 +1,5 @@
 import React from "react";
-import { NavigationContainer } from "@react-navigation/native";
+import { NavigationContainer, createNavigationContainerRef } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
 import DashboardScreen             from "../screens/DashboardScreen";
@@ -12,9 +12,11 @@ import AlarmScheduleScreen         from "../screens/AlarmScheduleScreen";
 
 const Stack = createNativeStackNavigator();
 
+export const navigationRef = createNavigationContainerRef();
+
 export default function AppNavigator() {
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator screenOptions={{ headerShown: false, animation: "fade" }}>
         <Stack.Screen name="Dashboard"               component={DashboardScreen} />
         <Stack.Screen name="Settings"                component={SettingsScreen}              options={{ animation: "slide_from_right" }} />

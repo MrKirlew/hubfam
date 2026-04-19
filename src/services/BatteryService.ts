@@ -7,7 +7,7 @@
  */
 
 import * as Battery from "expo-battery";
-import { Audio } from "expo-av";
+import { createAudioPlayer } from "expo-audio";
 import * as Notifications from "expo-notifications";
 
 const POLL_INTERVAL_MS = 300_000; // check every 5 minutes (battery-efficient)
@@ -74,16 +74,10 @@ export function stopBatteryMonitor(): void {
  */
 export async function playBatteryAlert(level: number): Promise<void> {
   try {
-    const { sound } = await Audio.Sound.createAsync(
-      require("../../assets/sounds/chime.mp3")
-    );
-    await sound.playAsync();
-    // Auto-unload after playback
-    sound.setOnPlaybackStatusUpdate((status) => {
-      if ("didJustFinish" in status && status.didJustFinish) {
-        sound.unloadAsync();
-      }
-    });
+    const player = createAudioPlayer(require("../../assets/sounds/chime.mp3"));
+    player.play();
+    // Release after 5 seconds
+    setTimeout(() => { try { player.remove(); } catch {} }, 5000);
   } catch {}
 
   try {

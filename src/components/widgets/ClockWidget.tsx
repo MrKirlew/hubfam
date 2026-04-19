@@ -27,7 +27,7 @@ export default function ClockWidget({ compact }: { compact?: boolean }) {
 
   if (compact) {
     return (
-      <View style={s.container}>
+      <View style={s.container} accessibilityRole="text" accessibilityLabel={`${timeStr}, ${dateStr}`} accessibilityLiveRegion="polite">
         <Text style={s.timeCompact}>{timeStr}</Text>
         <Text style={s.dateCompact}>{dateStr}</Text>
       </View>
@@ -35,7 +35,7 @@ export default function ClockWidget({ compact }: { compact?: boolean }) {
   }
 
   return (
-    <View style={s.container}>
+    <View style={s.container} accessibilityRole="text" accessibilityLabel={`${timeStr}, ${dateStr}. ${greeting}${activeName ? `, ${activeName}` : ""}. ${hubName}`} accessibilityLiveRegion="polite">
       <Text style={s.time}>{timeStr}</Text>
       <Text style={s.date}>{dateStr}</Text>
       <Text style={s.greeting}>{greeting}{activeName ? `, ${activeName}` : ""}</Text>

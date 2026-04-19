@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Modal, useWindowDimensions, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Modal, useWindowDimensions, ActivityIndicator, Alert } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { useAppStore } from "../store/appStore";
@@ -12,6 +13,8 @@ import EventTicker from "../components/EventTicker";
 import { useTheme } from "../hooks/useTheme";
 import type { Theme } from "../theme";
 import { performSync } from "../services/SyncOrchestrator";
+import strings from "../i18n/strings";
+import { verifyHubPin, setHubPinSecure, isLockedOut, getLockoutRemainingMs, isDigitsOnly } from "../services/PinService";
 
 export default function DashboardScreen() {
   const navigation = useNavigation<any>();
@@ -20,6 +23,7 @@ export default function DashboardScreen() {
   const lock = useAppStore(s => s.lock);
   const unlock = useAppStore(s => s.unlock);
   const hubName = useAppStore(s => s.hubName);
+  const isSyncing = useAppStore(s => s.isSyncing);
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
   const t = useTheme();
@@ -53,26 +57,40 @@ export default function DashboardScreen() {
   };
 
   const handlePinDigit = (digit: string) => {
+    if (!isDigitsOnly(digit)) return;
     const next = pinEntry + digit;
     setPinEntry(next);
     if (next.length === 4) {
-      if (next === hubPin) {
-        unlock("all");
+      if (isLockedOut()) {
+        const secs = Math.ceil(getLockoutRemainingMs() / 1000);
+        Alert.alert(strings.pin.tooManyAttempts, strings.pin.tryAgainIn(secs));
         setPinEntry("");
-      } else {
-        setPinEntry("");
+        return;
       }
+      // Pass the legacy plaintext PIN as a fallback so a SecureStore migration
+      // failure doesn't lock the user out of their own dashboard. If the
+      // background re-migration succeeds, flip the store sentinel so the
+      // plaintext value stops being persisted from this point forward.
+      verifyHubPin(next, hubPin, () => setHubPin("SECURE")).then((match) => {
+        if (match) {
+          unlock("all");
+        }
+        setPinEntry("");
+      });
     }
   };
 
   const handleSetupDigit = (digit: string) => {
     if (pinSetup === null) return;
+    if (!isDigitsOnly(digit)) return;
     const next = pinSetup + digit;
     setPinSetup(next);
     if (next.length === 4) {
-      setHubPin(next);
-      setPinSetup(null);
-      lock();
+      setHubPinSecure(next).then(() => {
+        setHubPin("SECURE");
+        setPinSetup(null);
+        lock();
+      });
     }
   };
 
@@ -202,7 +220,7 @@ export default function DashboardScreen() {
   const pinInactive = t.isDark ? "rgba(255,255,255,.15)" : "rgba(10,32,48,.12)";
 
   return (
-    <KeyboardAvoidingView style={s.container} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+    <SafeAreaView style={s.container} edges={["bottom"]}>
       {/* Toolbar */}
       <View style={s.toolbar}>
         <WeatherBar />
@@ -217,16 +235,43 @@ export default function DashboardScreen() {
           </View>
         )}
         <View style={{ flex: 1 }} />
-        <TouchableOpacity style={s.toolBtn} onPress={() => { performSync(); }}>
-          <Ionicons name="sync-outline" size={20} color={t.textSub} />
+        <TouchableOpacity
+          style={s.toolBtn}
+          onPress={() => { performSync(); }}
+          accessibilityRole="button"
+          accessibilityLabel={isSyncing ? "Syncing" : "Sync data"}
+          accessibilityHint="Double tap to sync calendar and task data"
+        >
+          {isSyncing ? (
+            <ActivityIndicator size={16} color={t.accent} />
+          ) : (
+            <Ionicons name="sync-outline" size={20} color={t.textSub} />
+          )}
         </TouchableOpacity>
-        <TouchableOpacity style={s.toolBtn} onPress={() => setShowLayoutPicker(true)}>
+        <TouchableOpacity
+          style={s.toolBtn}
+          onPress={() => setShowLayoutPicker(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Change layout"
+          accessibilityHint="Double tap to choose a dashboard layout"
+        >
           <Ionicons name="grid-outline" size={20} color={t.accent} />
         </TouchableOpacity>
-        <TouchableOpacity style={s.toolBtn} onPress={() => navigation.navigate("Settings")}>
+        <TouchableOpacity
+          style={s.toolBtn}
+          onPress={() => navigation.navigate("Settings")}
+          accessibilityRole="button"
+          accessibilityLabel="Open settings"
+        >
           <Ionicons name="settings-outline" size={20} color={t.textSub} />
         </TouchableOpacity>
-        <TouchableOpacity style={s.toolBtn} onPress={handleLock}>
+        <TouchableOpacity
+          style={s.toolBtn}
+          onPress={handleLock}
+          accessibilityRole="button"
+          accessibilityLabel={isLocked ? "Hub is locked" : "Lock hub"}
+          accessibilityHint={isLocked ? undefined : "Double tap to lock the hub"}
+        >
           <Ionicons
             name={isLocked ? "lock-closed" : "lock-open-outline"}
             size={20}
@@ -241,7 +286,8 @@ export default function DashboardScreen() {
       {/* Widget grid */}
       {renderPanels()}
 
-      {/* Quick-add input bar (hidden when locked) */}
+      {/* Quick-add input bar (hidden when locked). Floats absolutely above the
+          widget grid so the keyboard can lift it without shrinking the panels. */}
       {!isLocked && <QuickAddBar />}
 
       {/* Lock overlay — shows PIN entry on top of dashboard */}
@@ -254,7 +300,7 @@ export default function DashboardScreen() {
           <View style={s.lockBox}>
             <Ionicons name="lock-closed" size={32} color={t.accent} />
             <Text style={s.lockTitle}>{hubName}</Text>
-            <Text style={s.lockHint}>Enter PIN to unlock</Text>
+            <Text style={s.lockHint}>{strings.dashboard.enterPin}</Text>
             <View style={s.pinDots}>
               {[0,1,2,3].map(i => (
                 <View key={i} style={[s.pinDot, {
@@ -272,6 +318,9 @@ export default function DashboardScreen() {
                     else if (d) handlePinDigit(d);
                   }}
                   activeOpacity={d ? 0.7 : 1}
+                  accessibilityRole="button"
+                  accessibilityLabel={d === "<" ? "Delete last digit" : d ? `PIN digit ${d}` : undefined}
+                  accessible={!!d}
                 >
                   <Text style={s.pinKeyText}>{d === "<" ? "\u232B" : d}</Text>
                 </TouchableOpacity>
@@ -285,8 +334,8 @@ export default function DashboardScreen() {
       <Modal visible={pinSetup !== null} transparent animationType="fade">
         <View style={s.lockOverlay}>
           <View style={s.lockBox}>
-            <Text style={s.lockTitle}>Set a PIN</Text>
-            <Text style={s.lockHint}>Choose a 4-digit PIN to lock the hub</Text>
+            <Text style={s.lockTitle}>{strings.dashboard.setPin}</Text>
+            <Text style={s.lockHint}>{strings.dashboard.choosePinHint}</Text>
             <View style={s.pinDots}>
               {[0,1,2,3].map(i => (
                 <View key={i} style={[s.pinDot, {
@@ -304,12 +353,19 @@ export default function DashboardScreen() {
                     else if (d) handleSetupDigit(d);
                   }}
                   activeOpacity={d ? 0.7 : 1}
+                  accessibilityRole="button"
+                  accessibilityLabel={d === "<" ? "Delete last digit" : d ? `PIN digit ${d}` : undefined}
+                  accessible={!!d}
                 >
                   <Text style={s.pinKeyText}>{d === "<" ? "\u232B" : d}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-            <TouchableOpacity onPress={() => setPinSetup(null)}>
+            <TouchableOpacity
+              onPress={() => setPinSetup(null)}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel PIN setup"
+            >
               <Text style={s.cancelText}>Cancel</Text>
             </TouchableOpacity>
           </View>
@@ -326,13 +382,13 @@ export default function DashboardScreen() {
         panelIndex={widgetSelectorIndex ?? 0}
         onClose={() => setWidgetSelectorIndex(null)}
       />
-    </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 function getStyles(t: Theme) {
   return StyleSheet.create({
-    container:    { flex: 1, backgroundColor: t.bg, padding: 8 },
+    container:    { flex: 1, backgroundColor: t.bg, padding: 8, paddingBottom: 108 },
     toolbar:      { flexDirection: "row", justifyContent: "flex-end", gap: 8,
                     paddingHorizontal: 8, paddingTop: 8, paddingBottom: 4 },
     toolBtn:      { padding: 8, borderRadius: 12, backgroundColor: t.toolbar },
@@ -341,7 +397,7 @@ function getStyles(t: Theme) {
     clockTime:    { fontSize: 14, fontWeight: "700", color: t.text },
     clockDate:    { fontSize: 11, color: t.textSub },
     grid:         { flex: 1 },
-    lockOverlay:  { ...StyleSheet.absoluteFillObject, backgroundColor: t.modalBd,
+    lockOverlay:  { ...StyleSheet.absoluteFill, backgroundColor: t.modalBd,
                     justifyContent: "center", alignItems: "center", zIndex: 50 },
     lockBox:      { alignItems: "center", gap: 12 },
     lockTitle:    { fontSize: 22, fontWeight: "700", color: t.textOnAccent },

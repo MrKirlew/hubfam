@@ -18,6 +18,8 @@ import { useNavigation } from "@react-navigation/native";
 import { useAppStore, type Member, type CalendarFeed } from "../store/appStore";
 import { connectGoogleCalendar, fetchCalendarList, type GCalListEntry } from "../services/CalendarSyncService";
 import * as SecureStore from "expo-secure-store";
+import { verifyHubPin, setHubPinSecure, isLockedOut, getLockoutRemainingMs, isDigitsOnly } from "../services/PinService";
+import strings from "../i18n/strings";
 import { performSync } from "../services/SyncOrchestrator";
 import GoogleTasksSettings from "../components/GoogleTasksSettings";
 import { getBatteryInfo } from "../services/BatteryService";
@@ -69,6 +71,7 @@ export default function SettingsScreen() {
   const addFeed     = useAppStore(s => s.addFeed);
   const removeFeed  = useAppStore(s => s.removeFeed);
   const toggleFeed  = useAppStore(s => s.toggleFeed);
+  const updateFeed  = useAppStore(s => s.updateFeed);
   const hubName     = useAppStore(s => s.hubName);
   const setHubName  = useAppStore(s => s.setHubName);
   const lists       = useAppStore(s => s.lists);
@@ -91,6 +94,12 @@ export default function SettingsScreen() {
   const setSyncToGoogle    = useAppStore(s => s.setSyncToGoogle);
   const showClockBar       = useAppStore(s => s.showClockBar);
   const setShowClockBar    = useAppStore(s => s.setShowClockBar);
+  const showWidgetDates    = useAppStore(s => s.showWidgetDates);
+  const setShowWidgetDates = useAppStore(s => s.setShowWidgetDates);
+  const rolloverIncomplete = useAppStore(s => s.rolloverIncomplete);
+  const setRolloverIncomplete = useAppStore(s => s.setRolloverIncomplete);
+  const smartInputEnabled = useAppStore(s => s.smartInputEnabled);
+  const setSmartInputEnabled = useAppStore(s => s.setSmartInputEnabled);
   const keepAwakeEnabled   = useAppStore(s => s.keepAwakeEnabled);
   const setKeepAwakeEnabled = useAppStore(s => s.setKeepAwakeEnabled);
   const hubPin             = useAppStore(s => s.hubPin);
@@ -138,7 +147,7 @@ export default function SettingsScreen() {
 
   // Add Calendar modal state
   const [showAddCal, setShowAddCal] = useState(false);
-  const [calType, setCalType] = useState<"gcal" | "ical">("gcal");
+  const [calType, setCalType] = useState<"gcal" | "apple" | "ical">("gcal");
   const [calName, setCalName] = useState("");
   const [calAccount, setCalAccount] = useState("");
   const [calMemberId, setCalMemberId] = useState<string | null>(null);
@@ -151,6 +160,10 @@ export default function SettingsScreen() {
   const [gcalEmail, setGcalEmail] = useState("");
   const [gcalSelected, setGcalSelected] = useState<Set<string>>(new Set());
   const [loadingCalList, setLoadingCalList] = useState(false);
+
+  // PIN change modal state (replaces Alert.prompt which is iOS-only)
+  const [pinModalMode, setPinModalMode] = useState<"verify-old" | "enter-new" | "export-verify" | null>(null);
+  const [pinModalEntry, setPinModalEntry] = useState("");
 
   const handleAddMember = () => {
     const name = newMemberName.trim();
@@ -250,22 +263,34 @@ export default function SettingsScreen() {
         setShowAddCal(false);
         setShowCalPicker(true);
       } catch (err: any) {
-        if (err?.code !== "SIGN_IN_CANCELLED") {
-          Alert.alert("Google Sign-In Failed", err?.message || "Please try again.");
+        if (err?.code !== "SIGN_IN_CANCELLED" && err?.code !== "12501") {
+          // Surface the raw Google Play Services status code so config mismatches
+          // (e.g. DEVELOPER_ERROR = 10, meaning the SHA-1/package combo is not
+          // registered against the Android OAuth client in Google Cloud Console)
+          // are diagnosable instead of showing a blank "failed" toast.
+          const code = err?.code ? ` (code ${err.code})` : "";
+          const hint =
+            err?.code === "DEVELOPER_ERROR" || err?.code === 10 || err?.code === "10"
+              ? "\n\nThe app's signing certificate isn't registered in Google Cloud Console. The Android OAuth client must list package com.familyhub.app with this build's SHA-1."
+              : "";
+          Alert.alert(
+            "Google Sign-In Failed",
+            `${err?.message || "Please try again."}${code}${hint}`,
+          );
         }
       } finally {
         setConnectingGoogle(false);
         setLoadingCalList(false);
       }
     } else {
-      // iCal feed — manual URL entry
+      // iCal or Apple feed — manual URL entry
       const name = calName.trim();
       const account = calAccount.trim();
       if (!name || !account) return;
       addFeed({
         id: Date.now().toString(),
         name,
-        type: "ical",
+        type: calType === "apple" ? "apple" : "ical",
         memberId: calMemberId,
         color: calColor,
         account,
@@ -334,11 +359,58 @@ export default function SettingsScreen() {
 
   const getMember = (id: string | null) => members.find(m => m.id === id);
   const [activeTab, setActiveTab] = useState<"general" | "accounts" | "display" | "security">("general");
-  const [showChangePin, setShowChangePin] = useState(false);
-  const [oldPin, setOldPin] = useState("");
-  const [newPin, setNewPin] = useState("");
-  const [confirmPin, setConfirmPin] = useState("");
-  const [pinStep, setPinStep] = useState<"old" | "new" | "confirm">("old");
+  // PIN modal digit handler
+  const handlePinModalDigit = async (digit: string) => {
+    if (!isDigitsOnly(digit)) return;
+    const next = pinModalEntry + digit;
+    setPinModalEntry(next);
+    if (next.length === 4) {
+      if (pinModalMode === "verify-old") {
+        if (isLockedOut()) {
+          const secs = Math.ceil(getLockoutRemainingMs() / 1000);
+          Alert.alert(strings.pin.tooManyAttempts, strings.pin.tryAgainIn(secs));
+          setPinModalEntry("");
+          return;
+        }
+        const match = await verifyHubPin(next);
+        if (match) {
+          setPinModalEntry("");
+          setPinModalMode("enter-new");
+        } else {
+          setPinModalEntry("");
+          Alert.alert(strings.pin.wrongPin, strings.pin.wrongCurrentPin);
+        }
+      } else if (pinModalMode === "enter-new") {
+        if (!isDigitsOnly(next)) {
+          Alert.alert(strings.pin.wrongPin, strings.pin.invalid);
+          setPinModalEntry("");
+          return;
+        }
+        await setHubPinSecure(next);
+        setHubPin("SECURE");
+        setPinModalEntry("");
+        setPinModalMode(null);
+        Alert.alert(strings.settings.changePin, strings.pin.pinChanged);
+      } else if (pinModalMode === "export-verify") {
+        if (isLockedOut()) {
+          const secs = Math.ceil(getLockoutRemainingMs() / 1000);
+          Alert.alert(strings.pin.tooManyAttempts, strings.pin.tryAgainIn(secs));
+          setPinModalEntry("");
+          return;
+        }
+        const match = await verifyHubPin(next);
+        setPinModalEntry("");
+        if (match) {
+          setPinModalMode(null);
+          const Share = require("react-native").Share;
+          const store = useAppStore.getState();
+          exportAllLogs(store, Share);
+        } else {
+          Alert.alert(strings.pin.wrongPin, strings.pin.wrongPin);
+        }
+      }
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -363,6 +435,9 @@ export default function SettingsScreen() {
                 borderColor: t.cardBorder,
               }}
               onPress={() => setActiveTab(tab.key)}
+              accessibilityRole="button"
+              accessibilityLabel={`${tab.label} tab`}
+              accessibilityState={{ selected: activeTab === tab.key }}
             >
               <Text style={{
                 fontSize: 12, fontWeight: "600",
@@ -414,6 +489,8 @@ export default function SettingsScreen() {
                         Alert.alert("Approved", `Your approval recorded. ${approvalsNeeded - newApprovals.length} more needed.`);
                       }
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Approve ${child.name} as admin`}
                   >
                     <Text style={{ fontSize: 13, fontWeight: "600", color: t.textOnAccent }}>Approve</Text>
                   </TouchableOpacity>
@@ -423,6 +500,8 @@ export default function SettingsScreen() {
                       useAppStore.getState().setPendingChildAdmin(null);
                       Alert.alert("Denied", `Request for ${child.name} to be admin was denied.`);
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Deny ${child.name} as admin`}
                   >
                     <Text style={{ fontSize: 13, fontWeight: "600", color: t.error }}>Deny</Text>
                   </TouchableOpacity>
@@ -452,6 +531,8 @@ export default function SettingsScreen() {
                   if (name) setHubName(name);
                   setEditingHubName(false);
                 }}
+                accessibilityRole="text"
+                accessibilityLabel="Hub name"
               />
               <TouchableOpacity
                 style={styles.hubNameSaveBtn}
@@ -460,12 +541,16 @@ export default function SettingsScreen() {
                   if (name) setHubName(name);
                   setEditingHubName(false);
                 }}
+                accessibilityRole="button"
+                accessibilityLabel="Save hub name"
               >
                 <Ionicons name="checkmark" size={20} color={t.success} />
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.hubNameCancelBtn}
                 onPress={() => { setHubNameDraft(hubName); setEditingHubName(false); }}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel editing hub name"
               >
                 <Ionicons name="close" size={20} color={t.textSub} />
               </TouchableOpacity>
@@ -475,6 +560,9 @@ export default function SettingsScreen() {
               style={styles.hubNameRow}
               onPress={() => { setHubNameDraft(hubName); setEditingHubName(true); }}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`Hub name: ${hubName}`}
+              accessibilityHint="Double tap to edit hub name"
             >
               <Ionicons name="home-outline" size={20} color={t.accent} />
               <Text style={styles.hubNameText}>{hubName}</Text>
@@ -487,7 +575,12 @@ export default function SettingsScreen() {
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Family Members</Text>
           {isCurrentUserAdmin && (
-            <TouchableOpacity style={styles.sectionBtn} onPress={() => setShowAddMember(true)}>
+            <TouchableOpacity
+              style={styles.sectionBtn}
+              onPress={() => setShowAddMember(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Add family member"
+            >
               <Ionicons name="person-add-outline" size={16} color={t.accent} />
               <Text style={styles.sectionBtnText}>Add</Text>
             </TouchableOpacity>
@@ -504,6 +597,9 @@ export default function SettingsScreen() {
                   style={styles.memberLeft}
                   onPress={() => { setEditingMember(m); setEditName(m.name); setEditColor(m.color); setEditRole(m.role || "adult"); setEditIsAdmin(m.isAdmin || false); }}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit ${m.name}`}
+                  accessibilityHint="Double tap to edit this member"
                 >
                   <View style={[styles.avatar, { backgroundColor: m.color + "33", borderColor: m.color }]}>
                     <Text style={[styles.avatarText, { color: m.color }]}>{m.initials}</Text>
@@ -523,8 +619,11 @@ export default function SettingsScreen() {
                       )}
                       <Ionicons name="pencil-outline" size={14} color={t.textFaint} />
                     </View>
-                    <Text style={styles.memberMeta}>
-                      {m.pin ? "PIN set" : "No PIN"}
+                    <Text style={styles.memberMeta} numberOfLines={1}>
+                      {(() => {
+                        const emails = [...new Set(feeds.filter(f => f.type === "gcal" && f.memberId === m.id && f.account).map(f => f.account!))];
+                        return emails.length > 0 ? emails.join(", ") : "No account assigned";
+                      })()}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -547,7 +646,12 @@ export default function SettingsScreen() {
         {/* ── Calendar Feeds ─────────────────────────────────────── */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Calendar Accounts</Text>
-          <TouchableOpacity style={styles.sectionBtn} onPress={() => setShowAddCal(true)}>
+          <TouchableOpacity
+            style={styles.sectionBtn}
+            onPress={() => setShowAddCal(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Add calendar account"
+          >
             <Ionicons name="add-circle-outline" size={16} color={t.accent} />
             <Text style={styles.sectionBtnText}>Add</Text>
           </TouchableOpacity>
@@ -558,7 +662,14 @@ export default function SettingsScreen() {
             const member = getMember(f.memberId);
             return (
               <View key={f.id} style={[styles.feedRow, i < feeds.length - 1 && styles.rowBorder]}>
-                <TouchableOpacity onPress={() => toggleFeed(f.id)} style={styles.feedToggle}>
+                <TouchableOpacity
+                  onPress={() => toggleFeed(f.id)}
+                  style={styles.feedToggle}
+                  accessibilityRole="switch"
+                  accessibilityLabel={`${f.name} calendar`}
+                  accessibilityState={{ checked: f.enabled }}
+                  accessibilityHint="Double tap to toggle this calendar"
+                >
                   <Ionicons
                     name={f.enabled ? "checkbox" : "square-outline"}
                     size={22}
@@ -574,8 +685,13 @@ export default function SettingsScreen() {
                   </Text>
                 </View>
                 {f.type !== "manual" && (
-                  <TouchableOpacity onPress={() => handleDeleteFeed(f)} style={styles.feedDelete}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                  <TouchableOpacity
+                    onPress={() => handleDeleteFeed(f)}
+                    style={styles.feedDelete}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${f.name} calendar`}
+                  >
                     <Ionicons name="trash-outline" size={20} color={t.textSub} />
                   </TouchableOpacity>
                 )}
@@ -617,6 +733,9 @@ export default function SettingsScreen() {
               onValueChange={setNotificationsEnabled}
               trackColor={{ false: t.cardBorder, true: `${t.accent}66` }}
               thumbColor={notificationsEnabled ? t.accent : "#888"}
+              accessibilityRole="switch"
+              accessibilityLabel="Device notifications"
+              accessibilityState={{ checked: notificationsEnabled }}
             />
           </View>
         </View>
@@ -628,25 +747,15 @@ export default function SettingsScreen() {
             style={styles.toolRow}
             onPress={() => {
               if (hubPin) {
-                Alert.prompt ? Alert.prompt("Current PIN", "Enter your current 4-digit PIN:", (text: string) => {
-                  if (text === hubPin) {
-                    Alert.prompt("New PIN", "Enter a new 4-digit PIN:", (newP: string) => {
-                      if (newP && newP.length === 4) {
-                        setHubPin(newP);
-                        Alert.alert("PIN Changed", "Your hub PIN has been updated.");
-                      } else {
-                        Alert.alert("Invalid", "PIN must be 4 digits.");
-                      }
-                    }, "secure-text");
-                  } else {
-                    Alert.alert("Wrong PIN", "Incorrect current PIN.");
-                  }
-                }, "secure-text") : Alert.alert("Change PIN", "Use the lock button on the dashboard to set a new PIN.");
+                setPinModalEntry("");
+                setPinModalMode("verify-old");
               } else {
                 Alert.alert("No PIN Set", "Use the lock button on the dashboard to set a PIN first.");
               }
             }}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Change hub PIN"
           >
             <View style={styles.toolIcon}>
               <Text style={styles.toolIconText}>🔑</Text>
@@ -682,6 +791,9 @@ export default function SettingsScreen() {
                 backgroundColor: themeName === "dark" ? t.accent : t.toolbar,
                 borderWidth: 2, borderColor: themeName === "dark" ? t.accent : t.cardBorder }}
               onPress={() => setThemeName("dark")}
+              accessibilityRole="button"
+              accessibilityLabel="Dark theme"
+              accessibilityState={{ selected: themeName === "dark" }}
             >
               <Text style={{ fontSize: 14, fontWeight: "700",
                 color: themeName === "dark" ? t.textOnAccent : t.textSub }}>🌙 Dark</Text>
@@ -691,6 +803,9 @@ export default function SettingsScreen() {
                 backgroundColor: themeName === "ocean" ? "#4A9CC7" : t.toolbar,
                 borderWidth: 2, borderColor: themeName === "ocean" ? "#4A9CC7" : t.cardBorder }}
               onPress={() => setThemeName("ocean")}
+              accessibilityRole="button"
+              accessibilityLabel="Ocean theme"
+              accessibilityState={{ selected: themeName === "ocean" }}
             >
               <Text style={{ fontSize: 14, fontWeight: "700",
                 color: themeName === "ocean" ? t.textOnAccent : t.textSub }}>🌊 Ocean</Text>
@@ -714,6 +829,9 @@ export default function SettingsScreen() {
               onValueChange={(v) => setLockShowContent(v)}
               trackColor={{ false: t.cardBorder, true: `${t.accent}66` }}
               thumbColor={lockShowContent ? t.accent : "#888"}
+              accessibilityRole="switch"
+              accessibilityLabel="Show content when locked"
+              accessibilityState={{ checked: lockShowContent }}
             />
           </View>
           <View style={styles.toolRow}>
@@ -729,6 +847,9 @@ export default function SettingsScreen() {
               onValueChange={(v) => setLockMuteAlarms(v)}
               trackColor={{ false: t.cardBorder, true: `${t.warning}66` }}
               thumbColor={lockMuteAlarms ? t.warning : "#888"}
+              accessibilityRole="switch"
+              accessibilityLabel="Mute alarms when locked"
+              accessibilityState={{ checked: lockMuteAlarms }}
             />
           </View>
         </View>
@@ -749,6 +870,9 @@ export default function SettingsScreen() {
               onValueChange={(v) => setSyncToGoogle(v)}
               trackColor={{ false: t.cardBorder, true: `${t.success}66` }}
               thumbColor={syncToGoogle ? t.success : "#888"}
+              accessibilityRole="switch"
+              accessibilityLabel="Sync changes to Google"
+              accessibilityState={{ checked: syncToGoogle }}
             />
           </View>
         </View>
@@ -769,6 +893,9 @@ export default function SettingsScreen() {
               onValueChange={(v) => setShowClockBar(v)}
               trackColor={{ false: t.cardBorder, true: `${t.accent}66` }}
               thumbColor={showClockBar ? t.accent : "#888"}
+              accessibilityRole="switch"
+              accessibilityLabel="Show clock in toolbar"
+              accessibilityState={{ checked: showClockBar }}
             />
           </View>
           <View style={styles.toolRow}>
@@ -784,6 +911,64 @@ export default function SettingsScreen() {
               onValueChange={(v) => setKeepAwakeEnabled(v)}
               trackColor={{ false: t.cardBorder, true: `${t.warning}66` }}
               thumbColor={keepAwakeEnabled ? t.warning : "#888"}
+              accessibilityRole="switch"
+              accessibilityLabel="Always on display"
+              accessibilityState={{ checked: keepAwakeEnabled }}
+            />
+          </View>
+          <View style={[styles.toolRow, styles.rowBorder]}>
+            <View style={styles.toolIcon}>
+              <Text style={styles.toolIconText}>📅</Text>
+            </View>
+            <View style={[styles.toolInfo, { flex: 1 }]}>
+              <Text style={styles.toolName}>Show Dates on Widgets</Text>
+              <Text style={styles.toolDesc}>Display date reference next to Today/Tomorrow</Text>
+            </View>
+            <Switch
+              value={showWidgetDates}
+              onValueChange={(v) => setShowWidgetDates(v)}
+              trackColor={{ false: t.cardBorder, true: `${t.accent}66` }}
+              thumbColor={showWidgetDates ? t.accent : "#888"}
+              accessibilityRole="switch"
+              accessibilityLabel="Show dates on widgets"
+              accessibilityState={{ checked: showWidgetDates }}
+            />
+          </View>
+          <View style={[styles.toolRow, styles.rowBorder]}>
+            <View style={styles.toolIcon}>
+              <Text style={styles.toolIconText}>🔄</Text>
+            </View>
+            <View style={[styles.toolInfo, { flex: 1 }]}>
+              <Text style={styles.toolName}>Roll Over Incomplete Tasks</Text>
+              <Text style={styles.toolDesc}>Move unfinished tasks to the next day automatically</Text>
+            </View>
+            <Switch
+              value={rolloverIncomplete}
+              onValueChange={(v) => setRolloverIncomplete(v)}
+              trackColor={{ false: t.cardBorder, true: `${t.accent}66` }}
+              thumbColor={rolloverIncomplete ? t.accent : "#888"}
+              accessibilityRole="switch"
+              accessibilityLabel="Roll over incomplete tasks"
+              accessibilityState={{ checked: rolloverIncomplete }}
+            />
+          </View>
+          <View style={styles.toolRow}>
+            <View style={styles.toolIcon}>
+              <Text style={styles.toolIconText}>✨</Text>
+            </View>
+            <View style={[styles.toolInfo, { flex: 1 }]}>
+              <Text style={styles.toolName}>Smart Input</Text>
+              <Text style={styles.toolDesc}>Parse dates, times, repeats from quick-add text; ask only what's missing</Text>
+            </View>
+            <Switch
+              value={smartInputEnabled}
+              onValueChange={(v) => setSmartInputEnabled(v)}
+              trackColor={{ false: t.cardBorder, true: `${t.accent}66` }}
+              thumbColor={smartInputEnabled ? t.accent : "#888"}
+              accessibilityRole="switch"
+              accessibilityLabel="Smart input"
+              accessibilityHint="When on, QuickAddBar detects dates, times, and repeats from what you type"
+              accessibilityState={{ checked: smartInputEnabled }}
             />
           </View>
         </View>
@@ -816,6 +1001,9 @@ export default function SettingsScreen() {
             </View>
             <Switch
               value={dndEnabled}
+              accessibilityRole="switch"
+              accessibilityLabel="Do not disturb"
+              accessibilityState={{ checked: dndEnabled }}
               onValueChange={async (val) => {
                 try {
                   const hasPermission = await hasDndPermission();
@@ -858,6 +1046,8 @@ export default function SettingsScreen() {
                   nativeSetBrightness(val);
                 }}
                 style={{ padding: 4 }}
+                accessibilityRole="button"
+                accessibilityLabel="Decrease brightness"
               >
                 <Ionicons name="remove-circle-outline" size={24} color={t.textSub} />
               </TouchableOpacity>
@@ -871,6 +1061,8 @@ export default function SettingsScreen() {
                   nativeSetBrightness(val);
                 }}
                 style={{ padding: 4 }}
+                accessibilityRole="button"
+                accessibilityLabel="Increase brightness"
               >
                 <Ionicons name="add-circle-outline" size={24} color={t.textSub} />
               </TouchableOpacity>
@@ -895,6 +1087,9 @@ export default function SettingsScreen() {
                     paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8,
                     backgroundColor: batteryAlertPercent === pct ? t.accentBg : t.card,
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel={pct === 0 ? "Battery alert off" : `Battery alert at ${pct}%`}
+                  accessibilityState={{ selected: batteryAlertPercent === pct }}
                 >
                   <Text style={{
                     fontSize: 12, fontWeight: "600",
@@ -915,6 +1110,8 @@ export default function SettingsScreen() {
             style={[styles.toolRow, styles.rowBorder]}
             onPress={() => navigation.navigate("CalendarSubscriptions")}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Calendar subscriptions"
           >
             <View style={styles.toolIcon}>
               <Text style={styles.toolIconText}>📅</Text>
@@ -929,6 +1126,8 @@ export default function SettingsScreen() {
             style={[styles.toolRow, styles.rowBorder]}
             onPress={() => navigation.navigate("AlarmSchedule")}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Alarm schedules"
           >
             <View style={styles.toolIcon}>
               <Text style={styles.toolIconText}>⏰</Text>
@@ -943,6 +1142,8 @@ export default function SettingsScreen() {
             style={[styles.toolRow, styles.rowBorder]}
             onPress={() => navigation.navigate("AppManager")}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="App manager"
           >
             <View style={styles.toolIcon}>
               <Text style={styles.toolIconText}>📦</Text>
@@ -956,19 +1157,18 @@ export default function SettingsScreen() {
           <TouchableOpacity
             style={styles.toolRow}
             onPress={() => {
-              const Share = require("react-native").Share;
               const store = useAppStore.getState();
-              const pin = store.hubPin;
-              if (pin) {
-                Alert.prompt ? Alert.prompt("Enter PIN", "PIN required to export cleaning log:", (text: string) => {
-                  if (text === pin) exportAllLogs(store, Share);
-                  else Alert.alert("Wrong PIN", "Incorrect PIN.");
-                }, "secure-text") : Alert.alert("PIN Required", "Set up a hub PIN first to protect exports.");
+              if (store.hubPin) {
+                setPinModalEntry("");
+                setPinModalMode("export-verify");
               } else {
+                const Share = require("react-native").Share;
                 exportAllLogs(store, Share);
               }
             }}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Export cleaning log"
           >
             <View style={styles.toolIcon}>
               <Text style={styles.toolIconText}>📊</Text>
@@ -987,6 +1187,8 @@ export default function SettingsScreen() {
           {/* Clear App Cache — double confirm */}
           <TouchableOpacity
             style={[styles.toolRow, styles.rowBorder]}
+            accessibilityRole="button"
+            accessibilityLabel="Clear app cache"
             onPress={() => {
               Alert.alert(
                 "Clear FamilyHub Cache?",
@@ -1031,6 +1233,8 @@ export default function SettingsScreen() {
             style={[styles.toolRow, styles.rowBorder]}
             onPress={() => navigation.navigate("AppManager")}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Manage other apps"
           >
             <View style={styles.toolIcon}><Text style={styles.toolIconText}>📱</Text></View>
             <View style={styles.toolInfo}>
@@ -1043,6 +1247,9 @@ export default function SettingsScreen() {
           {/* Reset App — double confirm */}
           <TouchableOpacity
             style={styles.toolRow}
+            accessibilityRole="button"
+            accessibilityLabel="Reset app"
+            accessibilityHint="Double tap to erase all data and reset the app"
             onPress={() => {
               Alert.alert(
                 "Reset FamilyHub?",
@@ -1113,6 +1320,8 @@ export default function SettingsScreen() {
               value={newMemberName}
               onChangeText={setNewMemberName}
               autoFocus
+              accessibilityRole="text"
+              accessibilityLabel="Member name"
             />
 
             <Text style={styles.modalLabel}>Role</Text>
@@ -1120,6 +1329,9 @@ export default function SettingsScreen() {
               <TouchableOpacity
                 style={[styles.typeBtn, newMemberRole === "adult" && styles.typeBtnActive]}
                 onPress={() => setNewMemberRole("adult")}
+                accessibilityRole="button"
+                accessibilityLabel="Adult role"
+                accessibilityState={{ selected: newMemberRole === "adult" }}
               >
                 <Ionicons name="person" size={16} color={newMemberRole === "adult" ? t.accent : t.textFaint} />
                 <Text style={[styles.typeBtnText, newMemberRole === "adult" && styles.typeBtnTextActive]}>Adult</Text>
@@ -1127,6 +1339,9 @@ export default function SettingsScreen() {
               <TouchableOpacity
                 style={[styles.typeBtn, newMemberRole === "child" && styles.typeBtnActive]}
                 onPress={() => { setNewMemberRole("child"); setNewMemberIsAdmin(false); }}
+                accessibilityRole="button"
+                accessibilityLabel="Child role"
+                accessibilityState={{ selected: newMemberRole === "child" }}
               >
                 <Ionicons name="happy" size={16} color={newMemberRole === "child" ? t.warning : t.textFaint} />
                 <Text style={[styles.typeBtnText, newMemberRole === "child" && styles.typeBtnTextActive]}>Child</Text>
@@ -1141,6 +1356,9 @@ export default function SettingsScreen() {
                   onValueChange={setNewMemberIsAdmin}
                   trackColor={{ false: t.cardBorder, true: "#c084fc55" }}
                   thumbColor={newMemberIsAdmin ? "#c084fc" : "#555"}
+                  accessibilityRole="switch"
+                  accessibilityLabel="Admin privileges"
+                  accessibilityState={{ checked: newMemberIsAdmin }}
                 />
               </View>
             )}
@@ -1152,15 +1370,28 @@ export default function SettingsScreen() {
                   key={c}
                   style={[styles.colorOption, { backgroundColor: c }, newMemberColor === c && styles.colorSelected]}
                   onPress={() => setNewMemberColor(c)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Color ${c}`}
+                  accessibilityState={{ selected: newMemberColor === c }}
                 />
               ))}
             </View>
 
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setShowAddMember(false)}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setShowAddMember(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+              >
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.modalCreateBtn} onPress={handleAddMember}>
+              <TouchableOpacity
+                style={styles.modalCreateBtn}
+                onPress={handleAddMember}
+                accessibilityRole="button"
+                accessibilityLabel="Add member"
+              >
                 <Text style={styles.modalCreateText}>Add Member</Text>
               </TouchableOpacity>
             </View>
@@ -1181,6 +1412,8 @@ export default function SettingsScreen() {
               value={editName}
               onChangeText={setEditName}
               autoFocus
+              accessibilityRole="text"
+              accessibilityLabel="Member name"
             />
 
             <Text style={styles.modalLabel}>Role</Text>
@@ -1188,6 +1421,9 @@ export default function SettingsScreen() {
               <TouchableOpacity
                 style={[styles.typeBtn, editRole === "adult" && styles.typeBtnActive]}
                 onPress={() => setEditRole("adult")}
+                accessibilityRole="button"
+                accessibilityLabel="Adult role"
+                accessibilityState={{ selected: editRole === "adult" }}
               >
                 <Ionicons name="person" size={16} color={editRole === "adult" ? t.accent : t.textFaint} />
                 <Text style={[styles.typeBtnText, editRole === "adult" && styles.typeBtnTextActive]}>Adult</Text>
@@ -1195,6 +1431,9 @@ export default function SettingsScreen() {
               <TouchableOpacity
                 style={[styles.typeBtn, editRole === "child" && styles.typeBtnActive]}
                 onPress={() => { setEditRole("child"); setEditIsAdmin(false); }}
+                accessibilityRole="button"
+                accessibilityLabel="Child role"
+                accessibilityState={{ selected: editRole === "child" }}
               >
                 <Ionicons name="happy" size={16} color={editRole === "child" ? t.warning : t.textFaint} />
                 <Text style={[styles.typeBtnText, editRole === "child" && styles.typeBtnTextActive]}>Child</Text>
@@ -1209,9 +1448,49 @@ export default function SettingsScreen() {
                   onValueChange={setEditIsAdmin}
                   trackColor={{ false: t.cardBorder, true: "#c084fc55" }}
                   thumbColor={editIsAdmin ? "#c084fc" : "#555"}
+                  accessibilityRole="switch"
+                  accessibilityLabel="Admin privileges"
+                  accessibilityState={{ checked: editIsAdmin }}
                 />
               </View>
             )}
+
+            {/* Account Assignment */}
+            {(() => {
+              const allEmails = [...new Set(feeds.filter(f => f.type === "gcal" && f.account).map(f => f.account!))];
+              if (allEmails.length === 0) return null;
+              const memberId = editingMember?.id;
+              const assignedEmails = new Set(feeds.filter(f => f.type === "gcal" && f.memberId === memberId && f.account).map(f => f.account!));
+              return (
+                <>
+                  <Text style={styles.modalLabel}>Google Account</Text>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+                    {allEmails.map(email => {
+                      const isAssigned = assignedEmails.has(email);
+                      return (
+                        <TouchableOpacity
+                          key={email}
+                          style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: isAssigned ? t.accent : t.cardBorder, backgroundColor: isAssigned ? t.accent + "22" : "transparent" }}
+                          onPress={() => {
+                            if (!memberId) return;
+                            const accountFeeds = feeds.filter(f => f.type === "gcal" && f.account === email);
+                            for (const feed of accountFeeds) {
+                              updateFeed(feed.id, { memberId: isAssigned ? null : memberId });
+                            }
+                          }}
+                          accessibilityRole="checkbox"
+                          accessibilityLabel={`Assign ${email}`}
+                          accessibilityState={{ checked: isAssigned }}
+                        >
+                          <Ionicons name={isAssigned ? "checkmark-circle" : "ellipse-outline"} size={18} color={isAssigned ? t.accent : t.textFaint} />
+                          <Text style={{ color: isAssigned ? t.accent : t.textSub, fontSize: 13, marginLeft: 6 }}>{email}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </>
+              );
+            })()}
 
             <Text style={styles.modalLabel}>Color</Text>
             <View style={styles.colorGrid}>
@@ -1220,6 +1499,9 @@ export default function SettingsScreen() {
                   key={c}
                   style={[styles.colorOption, { backgroundColor: c }, editColor === c && styles.colorSelected]}
                   onPress={() => setEditColor(c)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Color ${c}`}
+                  accessibilityState={{ selected: editColor === c }}
                 />
               ))}
             </View>
@@ -1234,13 +1516,25 @@ export default function SettingsScreen() {
                   // Delay Alert so modal closes first, then show confirm
                   setTimeout(() => handleDeleteMember(memberToDelete), 300);
                 }}
+                accessibilityRole="button"
+                accessibilityLabel="Delete member"
               >
                 <Text style={[styles.modalCancelText, { color: t.error }]}>Delete</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setEditingMember(null)}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setEditingMember(null)}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+              >
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.modalCreateBtn} onPress={handleEditMember}>
+              <TouchableOpacity
+                style={styles.modalCreateBtn}
+                onPress={handleEditMember}
+                accessibilityRole="button"
+                accessibilityLabel="Save member"
+              >
                 <Text style={styles.modalCreateText}>Save</Text>
               </TouchableOpacity>
             </View>
@@ -1259,13 +1553,29 @@ export default function SettingsScreen() {
               <TouchableOpacity
                 style={[styles.typeBtn, calType === "gcal" && styles.typeBtnActive]}
                 onPress={() => setCalType("gcal")}
+                accessibilityRole="button"
+                accessibilityLabel="Google Calendar"
+                accessibilityState={{ selected: calType === "gcal" }}
               >
                 <Ionicons name="logo-google" size={16} color={calType === "gcal" ? t.accent : t.textFaint} />
                 <Text style={[styles.typeBtnText, calType === "gcal" && styles.typeBtnTextActive]}>Google Calendar</Text>
               </TouchableOpacity>
               <TouchableOpacity
+                style={[styles.typeBtn, calType === "apple" && styles.typeBtnActive]}
+                onPress={() => setCalType("apple")}
+                accessibilityRole="button"
+                accessibilityLabel="Apple Calendar"
+                accessibilityState={{ selected: calType === "apple" }}
+              >
+                <Ionicons name="logo-apple" size={16} color={calType === "apple" ? t.accent : t.textFaint} />
+                <Text style={[styles.typeBtnText, calType === "apple" && styles.typeBtnTextActive]}>Apple</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
                 style={[styles.typeBtn, calType === "ical" && styles.typeBtnActive]}
                 onPress={() => setCalType("ical")}
+                accessibilityRole="button"
+                accessibilityLabel="iCal Feed"
+                accessibilityState={{ selected: calType === "ical" }}
               >
                 <Ionicons name="globe-outline" size={16} color={calType === "ical" ? t.accent : t.textFaint} />
                 <Text style={[styles.typeBtnText, calType === "ical" && styles.typeBtnTextActive]}>iCal Feed</Text>
@@ -1278,6 +1588,8 @@ export default function SettingsScreen() {
               placeholderTextColor={t.textFaint}
               value={calName}
               onChangeText={setCalName}
+              accessibilityRole="text"
+              accessibilityLabel="Calendar name"
             />
 
             {calType === "gcal" ? (
@@ -1287,15 +1599,26 @@ export default function SettingsScreen() {
                 </Text>
               </View>
             ) : (
-              <TextInput
-                style={styles.modalInput}
-                placeholder="iCal URL (webcal:// or https://)"
-                placeholderTextColor={t.textFaint}
-                value={calAccount}
-                onChangeText={setCalAccount}
-                keyboardType="url"
-                autoCapitalize="none"
-              />
+              <>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder={calType === "apple"
+                    ? "iCloud calendar URL (webcal://p##-caldav.icloud.com/...)"
+                    : "iCal URL (webcal:// or https://)"}
+                  placeholderTextColor={t.textFaint}
+                  value={calAccount}
+                  onChangeText={setCalAccount}
+                  keyboardType="url"
+                  autoCapitalize="none"
+                  accessibilityRole="text"
+                  accessibilityLabel={calType === "apple" ? "iCloud calendar URL" : "iCal URL"}
+                />
+                {calType === "apple" && (
+                  <Text style={{ color: t.textFaint, fontSize: 11, marginTop: 4, paddingHorizontal: 4 }}>
+                    On iCloud.com, open Calendar, click Share next to your calendar, and copy the public URL.
+                  </Text>
+                )}
+              </>
             )}
 
             {/* Assign to member */}
@@ -1305,6 +1628,9 @@ export default function SettingsScreen() {
                 <TouchableOpacity
                   style={[styles.assignChip, calMemberId === null && styles.assignChipActive]}
                   onPress={() => setCalMemberId(null)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Assign to Family"
+                  accessibilityState={{ selected: calMemberId === null }}
                 >
                   <Text style={[styles.assignText, calMemberId === null && styles.assignTextActive]}>Family</Text>
                 </TouchableOpacity>
@@ -1313,6 +1639,9 @@ export default function SettingsScreen() {
                     key={m.id}
                     style={[styles.assignChip, calMemberId === m.id && { backgroundColor: m.color + "22", borderColor: m.color + "55" }]}
                     onPress={() => setCalMemberId(m.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Assign to ${m.name}`}
+                    accessibilityState={{ selected: calMemberId === m.id }}
                   >
                     <View style={[styles.assignDot, { backgroundColor: m.color }]} />
                     <Text style={[styles.assignText, calMemberId === m.id && { color: m.color }]}>{m.name}</Text>
@@ -1329,15 +1658,28 @@ export default function SettingsScreen() {
                   key={c}
                   style={[styles.colorOption, { backgroundColor: c }, calColor === c && styles.colorSelected]}
                   onPress={() => setCalColor(c)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Color ${c}`}
+                  accessibilityState={{ selected: calColor === c }}
                 />
               ))}
             </View>
 
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setShowAddCal(false)}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setShowAddCal(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+              >
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.modalCreateBtn} onPress={handleAddCalendar}>
+              <TouchableOpacity
+                style={styles.modalCreateBtn}
+                onPress={handleAddCalendar}
+                accessibilityRole="button"
+                accessibilityLabel="Add calendar"
+              >
                 <Text style={styles.modalCreateText}>Add Calendar</Text>
               </TouchableOpacity>
             </View>
@@ -1368,6 +1710,9 @@ export default function SettingsScreen() {
                         paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: t.divider,
                       }}
                       onPress={() => toggleCalSelection(cal.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${cal.summary}${cal.primary ? ", primary" : ""}`}
+                      accessibilityState={{ selected }}
                     >
                       <Ionicons
                         name={selected ? "checkbox" : "square-outline"}
@@ -1395,12 +1740,19 @@ export default function SettingsScreen() {
             )}
 
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { setShowCalPicker(false); setShowAddCal(true); }}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => { setShowCalPicker(false); setShowAddCal(true); }}
+                accessibilityRole="button"
+                accessibilityLabel="Go back"
+              >
                 <Text style={styles.modalCancelText}>Back</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalCreateBtn, gcalSelected.size === 0 && { opacity: 0.4 }]}
                 onPress={handleConfirmCalPicker}
+                accessibilityRole="button"
+                accessibilityLabel={gcalSelected.size > 0 ? `Add ${gcalSelected.size} calendar${gcalSelected.size > 1 ? "s" : ""}` : "Add calendar"}
               >
                 <Text style={styles.modalCreateText}>
                   Add {gcalSelected.size > 0 ? `${gcalSelected.size} Calendar${gcalSelected.size > 1 ? "s" : ""}` : "Calendar"}
@@ -1410,6 +1762,55 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Modal>
+      {/* ── PIN Entry Modal (replaces iOS-only Alert.prompt) ── */}
+      <Modal visible={pinModalMode !== null} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", alignItems: "center" }}>
+          <View style={{ backgroundColor: t.card, borderRadius: 16, padding: 24, width: 280, alignItems: "center" }}>
+            <Text style={{ color: t.text, fontSize: 18, fontWeight: "bold", marginBottom: 4 }}>
+              {pinModalMode === "verify-old" ? strings.pin.enterCurrent : pinModalMode === "enter-new" ? strings.pin.enterNew : strings.pin.enterPin}
+            </Text>
+            <Text style={{ color: t.textFaint, fontSize: 13, marginBottom: 16, textAlign: "center" }}>
+              {pinModalMode === "verify-old" ? strings.pin.verifyCurrent : pinModalMode === "enter-new" ? strings.pin.chooseNew : strings.pin.requiredToExport}
+            </Text>
+            {/* Dot indicators */}
+            <View style={{ flexDirection: "row", gap: 12, marginBottom: 20 }}>
+              {[0, 1, 2, 3].map(i => (
+                <View key={i} style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: i < pinModalEntry.length ? t.accent : t.textFaint + "33" }} />
+              ))}
+            </View>
+            {/* Keypad */}
+            <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 8, width: 220 }}>
+              {["1","2","3","4","5","6","7","8","9","","0","<"].map((key) => (
+                <TouchableOpacity
+                  key={key || "empty"}
+                  style={{ width: 64, height: 48, borderRadius: 8, backgroundColor: key ? (t.card === "#0f1729" ? "#1e293b" : "#1a2236") : "transparent", justifyContent: "center", alignItems: "center" }}
+                  onPress={() => {
+                    if (key === "<") { setPinModalEntry(pinModalEntry.slice(0, -1)); }
+                    else if (key) { handlePinModalDigit(key); }
+                  }}
+                  disabled={!key}
+                  accessibilityRole="button"
+                  accessibilityLabel={key === "<" ? "Backspace" : key ? `Digit ${key}` : undefined}
+                >
+                  <Text style={{ color: t.text, fontSize: 22, fontWeight: "600" }}>
+                    {key === "<" ? "⌫" : key}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {/* Cancel button */}
+            <TouchableOpacity
+              onPress={() => { setPinModalMode(null); setPinModalEntry(""); }}
+              style={{ marginTop: 16, paddingVertical: 8, paddingHorizontal: 24 }}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel PIN entry"
+            >
+              <Text style={{ color: t.textFaint, fontSize: 15 }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }

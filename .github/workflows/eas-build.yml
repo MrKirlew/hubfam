@@ -14,11 +14,18 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: "20.18.0"
           cache: npm
 
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
+
+      - name: Validate EXPO_TOKEN
+        run: |
+          if [ -z "${{ secrets.EXPO_TOKEN }}" ]; then
+            echo "::error::EXPO_TOKEN secret is not set"
+            exit 1
+          fi
 
       - name: Setup EAS CLI
         uses: expo/expo-github-action@v8

@@ -23,6 +23,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge:  false,
+    shouldShowBanner: true,
+    shouldShowList:   true,
   }),
 });
 
@@ -37,7 +39,7 @@ export async function requestNotificationPermissions(): Promise<boolean> {
       allowAlert: true,
       allowBadge: true,
       allowSound: true,
-      allowAnnouncements: true,
+      allowProvisional: false,
     },
   });
   return status === "granted";
@@ -83,6 +85,10 @@ export async function scheduleEventReminder(
     ? `${event.title} is today`
     : `${event.title} at ${event.time}`;
 
+  // DATE trigger is the only schedulable input type that works on BOTH
+  // Android and iOS for one-shot future notifications. The previous CALENDAR
+  // trigger is iOS-only — on Android it was being silently coerced to
+  // immediate, so reminders fired at the wrong time. See DEBT-040.
   const id = await Notifications.scheduleNotificationAsync({
     content: {
       title:    `📅 Reminder for ${memberName}`,
@@ -92,6 +98,7 @@ export async function scheduleEventReminder(
       ...(Platform.OS === "android" && { channelId: "reminders" }),
     },
     trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
       date: triggerTime,
     },
   });

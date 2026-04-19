@@ -1,0 +1,52 @@
+# .easignore overrides .gitignore for EAS Build project uploads.
+# We intentionally do NOT ignore /android and /ios here — EAS needs the native
+# projects to build. .gitignore ignores them because CNG regenerates them, but
+# the EAS pipeline uses the committed/tracked native code.
+
+# Environment variables — never upload local .env (EAS injects its own)
+.env
+.env.local
+.env.production
+
+# Node
+node_modules/
+
+# Expo
+.expo/
+
+# Android build outputs
+android/app/build/
+android/.gradle/
+android/build/
+
+# iOS
+ios/Pods/
+ios/build/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Google service credentials — never upload local copies
+droidgoogser.json
+webgserv.json
+google-services.json
+
+# Dev screenshots (loose files in project root only — not inside android/ios)
+/*.png
+
+# Play Store signing key — EAS has its own keystore
+*.keystore
+*.jks
+play-store-key.json
+
+# Internal team framework — private docs, not needed for build
+PROJECT_SUMMARY_PART*.md
+CLAUDE.md
+.claude-team/
+PROJECT_SUMMARY_P*.md
+DECISION_LOG*.md
+TECH_DEBT*.md
+init.sh
+scan.sh
+inspect.sh

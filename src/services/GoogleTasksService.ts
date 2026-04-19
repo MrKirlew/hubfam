@@ -8,13 +8,14 @@
 
 import { useAppStore, TodoList, TodoItem } from "../store/appStore";
 import { getStoredToken, refreshTokenForAccount } from "./CalendarSyncService";
+import { googleApiFetch } from "./googleApiFetch";
+import { recordFailure } from "./ErrorRecoveryService";
 
 const TASKS_BASE = "https://www.googleapis.com/tasks/v1";
 
 // ── Token helper ────────────────────────────────────────────────────────────
 
 async function getValidToken(email: string): Promise<string> {
-  // getStoredToken now uses getValidAccessToken() internally which is robust
   let token = await getStoredToken(email);
   if (!token) token = await refreshTokenForAccount(email);
   if (!token) throw new Error(`No valid token for ${email}. Re-authenticate needed.`);
@@ -23,27 +24,27 @@ async function getValidToken(email: string): Promise<string> {
 
 async function authedFetch(email: string, url: string, init?: RequestInit): Promise<Response> {
   const token = await getValidToken(email);
-  const res = await fetch(url, {
+  const res = await googleApiFetch(url, {
     ...init,
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       ...init?.headers,
     },
-  });
+  }, { operationKey: `tasks:${email}` });
 
   // Handle expired token — retry once after refresh
   if (res.status === 401) {
     const fresh = await refreshTokenForAccount(email);
     if (!fresh) throw new Error(`Token refresh failed for ${email}. Re-authenticate needed.`);
-    return fetch(url, {
+    return googleApiFetch(url, {
       ...init,
       headers: {
         Authorization: `Bearer ${fresh}`,
         "Content-Type": "application/json",
         ...init?.headers,
       },
-    });
+    }, { operationKey: `tasks:${email}:retry` });
   }
 
   return res;
@@ -297,6 +298,7 @@ export async function syncTasksForAllAccounts(): Promise<void> {
     } catch (err: any) {
       console.log(`[GoogleTasks] Sync failed for ${email}:`, err);
       errors.push(`${email}: ${err?.message || "Unknown error"}`);
+      recordFailure(`tasks:sync:${email}`, err as Error);
     }
   }
   if (errors.length > 0 && googleEmails.size === errors.length) {

@@ -80,16 +80,16 @@ export default function MonthCalendarWidget({ config, compact }: { config: Widge
   const fontSize = compact ? 9 : 12;
 
   return (
-    <View style={s.container}>
+    <View style={s.container} accessibilityLiveRegion="polite">
       {/* Month header */}
       <View style={s.header}>
-        <TouchableOpacity onPress={prevMonth} style={s.navBtn}>
+        <TouchableOpacity onPress={prevMonth} style={s.navBtn} accessibilityRole="button" accessibilityLabel="Previous month">
           <Ionicons name="chevron-back" size={compact ? 14 : 18} color={t.textSub} />
         </TouchableOpacity>
         <Text style={[s.monthTitle, compact && { fontSize: 12 }]}>
           {monthName} {viewYear}
         </Text>
-        <TouchableOpacity onPress={nextMonth} style={s.navBtn}>
+        <TouchableOpacity onPress={nextMonth} style={s.navBtn} accessibilityRole="button" accessibilityLabel="Next month">
           <Ionicons name="chevron-forward" size={compact ? 14 : 18} color={t.textSub} />
         </TouchableOpacity>
       </View>
@@ -119,6 +119,9 @@ export default function MonthCalendarWidget({ config, compact }: { config: Widge
                   style={[s.cell, isToday && s.todayCell, isSelected && s.selectedCell]}
                   onPress={() => setSelectedDay(day === selectedDay ? null : day)}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${monthName} ${day}${isToday ? ", today" : ""}${eventCount > 0 ? `, ${eventCount} events` : ""}`}
+                  accessibilityState={{ selected: isSelected }}
                 >
                   <Text style={[s.dayNum, { fontSize }, isToday && s.todayNum, isSelected && s.selectedNum]}>
                     {day}

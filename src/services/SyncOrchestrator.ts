@@ -3,12 +3,17 @@
  *
  * Coordinates calendar sync between CalendarSyncService and the Zustand store.
  * Preserves manual events while replacing synced events with fresh data.
+ * Uses timestamp-based sync lock to prevent race conditions.
  */
 
 import { useAppStore } from "../store/appStore";
 import { syncAllFeeds, loadCachedEvents } from "./CalendarSyncService";
 import { syncTasksForAllAccounts } from "./GoogleTasksService";
+import { onSyncFailure, markResolved } from "./ErrorRecoveryService";
 export { pushTaskChange } from "./GoogleTasksService";
+
+// Sync lock: tracks when current sync started to detect stale operations
+let syncStartedAt: number | null = null;
 
 /** Sync window: 30 days back, 90 days forward */
 function getSyncRange(): [Date, Date] {
@@ -26,6 +31,7 @@ function getSyncRange(): [Date, Date] {
 /**
  * Perform a full sync of all enabled feeds.
  * Merges results into the store, preserving manual events.
+ * Race-safe: captures manual events before AND after sync to prevent data loss.
  */
 export async function performSync(): Promise<void> {
   const store = useAppStore.getState();
@@ -34,17 +40,36 @@ export async function performSync(): Promise<void> {
     return;
   }
 
+  const thisSync = Date.now();
+  syncStartedAt = thisSync;
+
   console.log("[Sync] Starting full sync...");
   store.setSyncing(true);
   try {
+    // Snapshot manual events BEFORE sync starts
+    const preManualEvents = store.events.filter(e => e.source === "manual");
+
     const [from, to] = getSyncRange();
     console.log("[Sync] Syncing calendar feeds...");
     const syncedEvents = await syncAllFeeds(store.feeds, from, to);
     console.log(`[Sync] Calendar: ${syncedEvents.length} events synced`);
 
-    // Keep manual events, replace everything else with fresh synced data
-    const manualEvents = store.events.filter(e => e.source === "manual");
-    store.setEvents([...manualEvents, ...syncedEvents]);
+    // Check if another sync has superseded this one
+    if (syncStartedAt !== thisSync) {
+      console.log("[Sync] Superseded by newer sync — discarding results");
+      return;
+    }
+
+    // Snapshot manual events AFTER sync to catch any added during sync
+    const postManualEvents = useAppStore.getState().events.filter(e => e.source === "manual");
+
+    // Merge: keep all unique manual events from both snapshots
+    const manualMap = new Map<string, typeof preManualEvents[0]>();
+    for (const e of preManualEvents) manualMap.set(e.id, e);
+    for (const e of postManualEvents) manualMap.set(e.id, e);
+    const allManualEvents = Array.from(manualMap.values());
+
+    store.setEvents([...allManualEvents, ...syncedEvents]);
 
     // Sync Google Tasks for all connected accounts
     console.log("[Sync] Syncing Google Tasks...");
@@ -52,10 +77,15 @@ export async function performSync(): Promise<void> {
     console.log("[Sync] Tasks sync complete");
 
     store.setLastSyncTime(Date.now());
+    markResolved("sync:calendar");
     console.log("[Sync] Full sync complete");
   } catch (err) {
     console.log("[Sync] FAILED:", err);
+    onSyncFailure(err as Error);
   } finally {
+    if (syncStartedAt === thisSync) {
+      syncStartedAt = null;
+    }
     store.setSyncing(false);
   }
 }

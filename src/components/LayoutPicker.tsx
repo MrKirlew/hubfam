@@ -126,6 +126,9 @@ export default function LayoutPicker({ visible, onClose }: Props) {
                 style={[s.option, layout.preset === l.preset && s.optionActive]}
                 onPress={() => handleSelect(l.preset, l.panels)}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`${l.label} layout, ${l.panels} panels`}
+                accessibilityState={{ selected: layout.preset === l.preset }}
               >
                 <LayoutPreview preset={l.preset} isActive={layout.preset === l.preset} t={t} />
                 <Text style={[s.optionLabel, layout.preset === l.preset && s.labelActive]}>
@@ -134,7 +137,7 @@ export default function LayoutPicker({ visible, onClose }: Props) {
               </TouchableOpacity>
             ))}
           </ScrollView>
-          <TouchableOpacity style={s.cancelBtn} onPress={onClose}>
+          <TouchableOpacity style={s.cancelBtn} onPress={onClose} accessibilityRole="button" accessibilityLabel="Cancel layout selection">
             <Text style={s.cancelText}>Cancel</Text>
           </TouchableOpacity>
         </View>

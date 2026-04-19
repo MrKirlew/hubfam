@@ -1,0 +1,21 @@
+module.exports = {
+  setNotificationHandler: jest.fn(),
+  getPermissionsAsync: jest.fn().mockResolvedValue({ status: "granted" }),
+  requestPermissionsAsync: jest.fn().mockResolvedValue({ status: "granted" }),
+  setNotificationChannelAsync: jest.fn().mockResolvedValue(null),
+  scheduleNotificationAsync: jest.fn().mockResolvedValue("notif-id"),
+  cancelScheduledNotificationAsync: jest.fn().mockResolvedValue(undefined),
+  cancelAllScheduledNotificationsAsync: jest.fn().mockResolvedValue(undefined),
+  getAllScheduledNotificationsAsync: jest.fn().mockResolvedValue([]),
+  addNotificationResponseReceivedListener: jest.fn().mockReturnValue({ remove: jest.fn() }),
+  AndroidImportance: { HIGH: 4, MAX: 5 },
+  AndroidNotificationVisibility: { PUBLIC: 1 },
+  SchedulableTriggerInputTypes: {
+    DATE: "date",
+    TIME_INTERVAL: "timeInterval",
+    DAILY: "daily",
+    WEEKLY: "weekly",
+    YEARLY: "yearly",
+    CALENDAR: "calendar",
+  },
+};

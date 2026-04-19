@@ -63,7 +63,7 @@ export default function GoogleTasksSettings() {
     <View>
       <View style={s.sectionHeader}>
         <Text style={s.sectionTitle}>Google Tasks</Text>
-        <TouchableOpacity style={[s.syncBtn, syncing && { opacity: 0.5 }]} onPress={handleSyncNow} disabled={syncing}>
+        <TouchableOpacity style={[s.syncBtn, syncing && { opacity: 0.5 }]} onPress={handleSyncNow} disabled={syncing} accessibilityRole="button" accessibilityLabel={syncing ? "Syncing Google Tasks" : "Sync Google Tasks now"}>
           {syncing ? (
             <ActivityIndicator size={14} color={t.accent} />
           ) : (
@@ -92,6 +92,9 @@ export default function GoogleTasksSettings() {
                   <TouchableOpacity
                     onPress={() => handleToggleSync(list.id, !!list.syncEnabled)}
                     style={s.toggleBtn}
+                    accessibilityRole="checkbox"
+                    accessibilityLabel={`Sync ${list.name}`}
+                    accessibilityState={{ checked: !!list.syncEnabled }}
                   >
                     <Ionicons
                       name={list.syncEnabled ? "checkbox" : "square-outline"}

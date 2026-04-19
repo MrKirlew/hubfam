@@ -106,7 +106,7 @@ export default function TodoListWidget({ config }: { config: WidgetConfig }) {
     const done = list.items.filter(i => i.done).length;
     const total = list.items.length;
     return (
-      <View style={s.container}>
+      <View style={s.container} accessibilityLiveRegion="polite">
         <View style={s.header}>
           <Text style={s.title}>{list.icon} {list.name}</Text>
           <Text style={s.count}>{done}/{total}</Text>
@@ -117,6 +117,9 @@ export default function TodoListWidget({ config }: { config: WidgetConfig }) {
               <TouchableOpacity
                 onPress={() => handleToggle(list.id, item.id)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="checkbox"
+                accessibilityLabel={`Toggle ${item.text}`}
+                accessibilityState={{ checked: item.done }}
               >
                 <Ionicons
                   name={item.done ? "checkbox" : "square-outline"}
@@ -128,6 +131,9 @@ export default function TodoListWidget({ config }: { config: WidgetConfig }) {
                 style={s.textArea}
                 onPress={() => openDetail(item, list.id)}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Edit ${item.text}`}
+                accessibilityHint="Opens task details"
               >
                 <Text style={[s.itemText, item.done && s.itemDone]} numberOfLines={1}>
                   {item.text}
@@ -144,6 +150,9 @@ export default function TodoListWidget({ config }: { config: WidgetConfig }) {
               <TouchableOpacity
                 onPress={() => cycleAssignment(list.id, item.id, item.assignedTo)}
                 style={[s.assignBadge, { borderColor: getMemberColor(item.assignedTo) }]}
+                accessibilityRole="button"
+                accessibilityLabel={`Assign ${item.text}, currently ${getMemberInitials(item.assignedTo) || "unassigned"}`}
+                accessibilityHint="Tap to cycle assignment"
               >
                 {getMemberInitials(item.assignedTo) ? (
                   <Text style={[s.assignText, { color: getMemberColor(item.assignedTo) }]}>
@@ -156,6 +165,8 @@ export default function TodoListWidget({ config }: { config: WidgetConfig }) {
               <TouchableOpacity
                 onPress={() => handleRemove(list.id, item.id)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${item.text}`}
               >
                 <Ionicons name="close-circle-outline" size={18} color={t.textFaint} />
               </TouchableOpacity>
@@ -166,7 +177,7 @@ export default function TodoListWidget({ config }: { config: WidgetConfig }) {
           )}
         </ScrollView>
 
-        <TouchableOpacity style={s.addRow} onPress={openAddModal} activeOpacity={0.7}>
+        <TouchableOpacity style={s.addRow} onPress={openAddModal} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={`Add item to ${list.name}`}>
           <View style={s.addPlaceholder}>
             <Ionicons name="add-circle" size={18} color={list.color || t.accent} />
             <Text style={s.addPlaceholderText}>Add item...</Text>
@@ -185,6 +196,7 @@ export default function TodoListWidget({ config }: { config: WidgetConfig }) {
             onChangeText={setNewItemText}
             returnKeyType="next"
             autoFocus
+            accessibilityLabel="Item title"
           />
           <Text style={s.fieldLabel}>Details / Notes</Text>
           <TextInput
@@ -195,15 +207,18 @@ export default function TodoListWidget({ config }: { config: WidgetConfig }) {
             onChangeText={setNewItemNotes}
             multiline
             textAlignVertical="top"
+            accessibilityLabel="Item notes"
           />
           <View style={s.sheetActions}>
-            <TouchableOpacity style={s.sheetCancel} onPress={() => setShowAddModal(false)}>
+            <TouchableOpacity style={s.sheetCancel} onPress={() => setShowAddModal(false)} accessibilityRole="button" accessibilityLabel="Cancel">
               <Text style={s.sheetCancelText}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[s.sheetBtn, { backgroundColor: list.color || t.accent },
                 !newItemText.trim() && { opacity: 0.4 }]}
               onPress={() => handleAddItem(list.id)}
+              accessibilityRole="button"
+              accessibilityLabel="Add item"
             >
               <Ionicons name="add-circle" size={18} color={t.textOnAccent} />
               <Text style={s.sheetBtnText}>Add Item</Text>
@@ -215,7 +230,7 @@ export default function TodoListWidget({ config }: { config: WidgetConfig }) {
         <ModalSheet visible={detailItem !== null} onClose={saveDetail}>
           <View style={s.detailHeader}>
             <Text style={s.sheetTitle}>Task Details</Text>
-            <TouchableOpacity onPress={saveDetail} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity onPress={saveDetail} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Close task details">
               <Ionicons name="close" size={22} color={t.textFaint} />
             </TouchableOpacity>
           </View>
@@ -227,6 +242,7 @@ export default function TodoListWidget({ config }: { config: WidgetConfig }) {
             placeholder="Task title..."
             placeholderTextColor={t.textFaint}
             autoFocus
+            accessibilityLabel="Task title"
           />
           <Text style={s.fieldLabel}>Details / Notes</Text>
           <TextInput
@@ -237,14 +253,17 @@ export default function TodoListWidget({ config }: { config: WidgetConfig }) {
             placeholderTextColor={t.textFaint}
             multiline
             textAlignVertical="top"
+            accessibilityLabel="Task notes"
           />
           <View style={s.sheetActions}>
-            <TouchableOpacity style={s.sheetCancel} onPress={() => setDetailItem(null)}>
+            <TouchableOpacity style={s.sheetCancel} onPress={() => setDetailItem(null)} accessibilityRole="button" accessibilityLabel="Cancel">
               <Text style={s.sheetCancelText}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[s.sheetBtn, { backgroundColor: list.color || t.accent }]}
               onPress={saveDetail}
+              accessibilityRole="button"
+              accessibilityLabel="Save task"
             >
               <Ionicons name="checkmark-circle" size={18} color={t.textOnAccent} />
               <Text style={s.sheetBtnText}>Save</Text>

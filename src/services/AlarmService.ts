@@ -3,15 +3,16 @@
  * Checks alarm schedules every 60 seconds and fires notifications + popups.
  */
 
-import { Alert } from "react-native";
-import { Audio } from "expo-av";
+import { Alert, AppState, AppStateStatus } from "react-native";
+import { createAudioPlayer } from "expo-audio";
 import * as Notifications from "expo-notifications";
 import { useAppStore } from "../store/appStore";
 import type { AlarmSchedule } from "../store/appStore";
 
 let alarmTimer: ReturnType<typeof setInterval> | null = null;
+let appStateSubscription: ReturnType<typeof AppState.addEventListener> | null = null;
 
-const SOUND_FILES: Record<string, any> = {
+const SOUND_FILES: Record<string, number> = {
   chime: require("../../assets/sounds/chime.mp3"),
   bell: require("../../assets/sounds/bell.mp3"),
   alert: require("../../assets/sounds/alert.mp3"),
@@ -22,10 +23,10 @@ async function playAlarmSound(soundName?: string): Promise<void> {
   try {
     const file = SOUND_FILES[soundName];
     if (!file) return;
-    const { sound } = await Audio.Sound.createAsync(file);
-    await sound.playAsync();
-    // Auto-unload after 5 seconds
-    setTimeout(() => sound.unloadAsync().catch(() => {}), 5000);
+    const player = createAudioPlayer(file);
+    player.play();
+    // Release after 5 seconds
+    setTimeout(() => { try { player.remove(); } catch {} }, 5000);
   } catch (err) {
     console.log("[AlarmService] Sound play failed:", err);
   }
@@ -93,7 +94,7 @@ function checkAlarms(): void {
       // Native notification — only if notifications are enabled
       if (store.notificationsEnabled) {
         Notifications.scheduleNotificationAsync({
-          content: { title, body, sound: true },
+          content: { title, body, sound: true, data: { type: "alarm", alarmId: alarm.id } },
           trigger: null, // immediate
         }).catch(() => {});
       }
@@ -118,13 +119,32 @@ function checkAlarms(): void {
 
 export function startAlarmChecker(): void {
   if (alarmTimer) return;
-  alarmTimer = setInterval(checkAlarms, 60_000); // check every 60 seconds
+  alarmTimer = setInterval(checkAlarms, 60_000);
   checkAlarms(); // initial check
+
+  // Pause/resume based on app state to save battery
+  appStateSubscription = AppState.addEventListener("change", (nextState: AppStateStatus) => {
+    if (nextState === "active") {
+      if (!alarmTimer) {
+        alarmTimer = setInterval(checkAlarms, 60_000);
+        checkAlarms(); // immediate check on resume
+      }
+    } else {
+      if (alarmTimer) {
+        clearInterval(alarmTimer);
+        alarmTimer = null;
+      }
+    }
+  });
 }
 
 export function stopAlarmChecker(): void {
   if (alarmTimer) {
     clearInterval(alarmTimer);
     alarmTimer = null;
+  }
+  if (appStateSubscription) {
+    appStateSubscription.remove();
+    appStateSubscription = null;
   }
 }

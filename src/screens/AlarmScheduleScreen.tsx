@@ -45,6 +45,7 @@ export default function AlarmScheduleScreen() {
   const removeAlarm = useAppStore(st => st.removeAlarm);
 
   const [showCreate, setShowCreate] = useState(false);
+  const [editingAlarmId, setEditingAlarmId] = useState<string | null>(null);
   const [alarmType, setAlarmType] = useState<AlarmType>("interval");
   const [recurrence, setRecurrence] = useState<AlarmRecurrence>("daily");
   const [label, setLabel] = useState("Check Family Hub");
@@ -78,7 +79,46 @@ export default function AlarmScheduleScreen() {
     return `${String(h).padStart(2, "0")}:${timeMin.padStart(2, "0")}`;
   };
 
+  const openEdit = (alarm: AlarmSchedule) => {
+    setEditingAlarmId(alarm.id);
+    setAlarmType(alarm.type);
+    setRecurrence(alarm.recurrence);
+    setLabel(alarm.label);
+    setMessage(alarm.message || "");
+    setSoundName(alarm.soundName || "chime");
+    setIntervalHours(alarm.intervalHours || 4);
+    if (alarm.specificTime) {
+      const [h, m] = alarm.specificTime.split(":").map(Number);
+      const isPM = h >= 12;
+      const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+      setTimeHour(String(h12));
+      setTimeMin(String(m).padStart(2, "0"));
+      setTimePeriod(isPM ? "PM" : "AM");
+    }
+    setWindowStart(alarm.windowStart || "08:00");
+    setWindowEnd(alarm.windowEnd || "20:00");
+    setShowCreate(true);
+  };
+
   const handleCreate = () => {
+    if (editingAlarmId) {
+      // Update existing alarm
+      updateAlarm(editingAlarmId, {
+        label: label.trim() || "Alarm",
+        message: message.trim() || "Alarm!",
+        soundName,
+        type: alarmType,
+        recurrence,
+        intervalHours: alarmType === "interval" ? intervalHours : undefined,
+        specificTime: alarmType === "specific-time" ? getTimeFromPicker() : undefined,
+        windowStart: alarmType === "random-window" ? windowStart : undefined,
+        windowEnd: alarmType === "random-window" ? windowEnd : undefined,
+      });
+      setShowCreate(false);
+      setEditingAlarmId(null);
+      resetForm();
+      return;
+    }
     const alarm: AlarmSchedule = {
       id: `alarm_${Date.now()}`,
       enabled: true,
@@ -91,6 +131,7 @@ export default function AlarmScheduleScreen() {
       specificTime: alarmType === "specific-time" ? getTimeFromPicker() : undefined,
       windowStart: alarmType === "random-window" ? windowStart : undefined,
       windowEnd: alarmType === "random-window" ? windowEnd : undefined,
+      lastTriggered: alarmType === "interval" ? Date.now() : undefined,
     };
     addAlarm(alarm);
     setShowCreate(false);
@@ -123,11 +164,21 @@ export default function AlarmScheduleScreen() {
     <View style={s.container}>
       {/* Header */}
       <View style={s.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={s.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
           <Ionicons name="arrow-back" size={22} color={theme.text} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>Alarm Schedules</Text>
-        <TouchableOpacity onPress={() => setShowCreate(true)} style={s.addBtn}>
+        <TouchableOpacity
+          onPress={() => setShowCreate(true)}
+          style={s.addBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Add new alarm"
+        >
           <Ionicons name="add-circle" size={28} color={theme.accent} />
         </TouchableOpacity>
       </View>
@@ -142,7 +193,7 @@ export default function AlarmScheduleScreen() {
           </View>
         )}
         {alarms.map(a => (
-          <View key={a.id} style={s.alarmCard}>
+          <TouchableOpacity key={a.id} style={s.alarmCard} onPress={() => openEdit(a)} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={`Edit ${a.label} alarm`}>
             <View style={s.alarmInfo}>
               <Text style={s.alarmLabel}>{a.label}</Text>
               <Text style={s.alarmDesc}>{describeAlarm(a)}</Text>
@@ -156,11 +207,19 @@ export default function AlarmScheduleScreen() {
               onValueChange={v => updateAlarm(a.id, { enabled: v })}
               trackColor={{ false: theme.cardBorder, true: theme.accent + "66" }}
               thumbColor={a.enabled ? theme.accent : "#666"}
+              accessibilityRole="switch"
+              accessibilityLabel={`${a.label} alarm`}
+              accessibilityState={{ checked: a.enabled }}
             />
-            <TouchableOpacity onPress={() => handleDelete(a.id)} style={{ padding: 8 }}>
+            <TouchableOpacity
+              onPress={() => handleDelete(a.id)}
+              style={{ padding: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={`Delete ${a.label} alarm`}
+            >
               <Ionicons name="trash-outline" size={18} color={theme.error} />
             </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
         ))}
       </ScrollView>
 
@@ -170,10 +229,12 @@ export default function AlarmScheduleScreen() {
         <View style={s.modalBg}>
           <View style={s.modalSheet}>
             <View style={s.modalHeaderRow}>
-              <Text style={s.modalTitle}>New Alarm</Text>
+              <Text style={s.modalTitle}>{editingAlarmId ? "Edit Alarm" : "New Alarm"}</Text>
               <TouchableOpacity
-                onPress={() => { setShowCreate(false); resetForm(); }}
+                onPress={() => { setShowCreate(false); setEditingAlarmId(null); resetForm(); }}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
               >
                 <Ionicons name="close" size={22} color={theme.textFaint} />
               </TouchableOpacity>
@@ -189,6 +250,8 @@ export default function AlarmScheduleScreen() {
               onChangeText={setLabel}
               placeholder="Alarm name..."
               placeholderTextColor={theme.textFaint}
+              accessibilityRole="text"
+              accessibilityLabel="Alarm label"
             />
 
             {/* Alarm type */}
@@ -199,6 +262,9 @@ export default function AlarmScheduleScreen() {
                   key={at.key}
                   style={[s.chip, alarmType === at.key && s.chipActive]}
                   onPress={() => setAlarmType(at.key)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Alarm type: ${at.label}`}
+                  accessibilityState={{ selected: alarmType === at.key }}
                 >
                   <Ionicons name={at.icon as any} size={14} color={alarmType === at.key ? theme.accent : theme.textSub} />
                   <Text style={[s.chipText, alarmType === at.key && s.chipTextActive]}>{at.label}</Text>
@@ -216,6 +282,9 @@ export default function AlarmScheduleScreen() {
                       key={h}
                       style={[s.chip, intervalHours === h && s.chipActive]}
                       onPress={() => setIntervalHours(h)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Every ${h} hours`}
+                      accessibilityState={{ selected: intervalHours === h }}
                     >
                       <Text style={[s.chipText, intervalHours === h && s.chipTextActive]}>{h}h</Text>
                     </TouchableOpacity>
@@ -234,6 +303,8 @@ export default function AlarmScheduleScreen() {
                     onChangeText={tx => setTimeHour(tx.replace(/[^0-9]/g, "").slice(0, 2))}
                     keyboardType="number-pad"
                     maxLength={2}
+                    accessibilityRole="text"
+                    accessibilityLabel="Hour"
                   />
                   <Text style={s.timeSep}>:</Text>
                   <TextInput
@@ -242,16 +313,24 @@ export default function AlarmScheduleScreen() {
                     onChangeText={tx => setTimeMin(tx.replace(/[^0-9]/g, "").slice(0, 2))}
                     keyboardType="number-pad"
                     maxLength={2}
+                    accessibilityRole="text"
+                    accessibilityLabel="Minute"
                   />
                   <TouchableOpacity
                     style={[s.chip, timePeriod === "AM" && s.chipActive]}
                     onPress={() => setTimePeriod("AM")}
+                    accessibilityRole="button"
+                    accessibilityLabel="AM"
+                    accessibilityState={{ selected: timePeriod === "AM" }}
                   >
                     <Text style={[s.chipText, timePeriod === "AM" && s.chipTextActive]}>AM</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[s.chip, timePeriod === "PM" && s.chipActive]}
                     onPress={() => setTimePeriod("PM")}
+                    accessibilityRole="button"
+                    accessibilityLabel="PM"
+                    accessibilityState={{ selected: timePeriod === "PM" }}
                   >
                     <Text style={[s.chipText, timePeriod === "PM" && s.chipTextActive]}>PM</Text>
                   </TouchableOpacity>
@@ -269,6 +348,8 @@ export default function AlarmScheduleScreen() {
                     onChangeText={setWindowStart}
                     placeholder="08:00"
                     placeholderTextColor={theme.textFaint}
+                    accessibilityRole="text"
+                    accessibilityLabel="Window start time"
                   />
                   <Text style={s.timeSep}>and</Text>
                   <TextInput
@@ -277,6 +358,8 @@ export default function AlarmScheduleScreen() {
                     onChangeText={setWindowEnd}
                     placeholder="20:00"
                     placeholderTextColor={theme.textFaint}
+                    accessibilityRole="text"
+                    accessibilityLabel="Window end time"
                   />
                 </View>
               </>
@@ -290,6 +373,9 @@ export default function AlarmScheduleScreen() {
                   key={r.key}
                   style={[s.chip, recurrence === r.key && s.chipActive]}
                   onPress={() => setRecurrence(r.key)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Repeat: ${r.label}`}
+                  accessibilityState={{ selected: recurrence === r.key }}
                 >
                   <Text style={[s.chipText, recurrence === r.key && s.chipTextActive]}>{r.label}</Text>
                 </TouchableOpacity>
@@ -304,6 +390,8 @@ export default function AlarmScheduleScreen() {
               onChangeText={setMessage}
               placeholder="Message to show when alarm fires..."
               placeholderTextColor={theme.textFaint}
+              accessibilityRole="text"
+              accessibilityLabel="Alarm popup message"
             />
 
             {/* Sound */}
@@ -319,6 +407,9 @@ export default function AlarmScheduleScreen() {
                   key={snd.key}
                   style={[s.chip, soundName === snd.key && s.chipActive]}
                   onPress={() => setSoundName(snd.key)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Sound: ${snd.label}`}
+                  accessibilityState={{ selected: soundName === snd.key }}
                 >
                   <Text style={[s.chipText, soundName === snd.key && s.chipTextActive]}>{snd.label}</Text>
                 </TouchableOpacity>
@@ -329,12 +420,22 @@ export default function AlarmScheduleScreen() {
 
             {/* Action buttons — always visible footer */}
             <View style={s.modalActions}>
-              <TouchableOpacity style={s.cancelBtn} onPress={() => { setShowCreate(false); resetForm(); }}>
+              <TouchableOpacity
+                style={s.cancelBtn}
+                onPress={() => { setShowCreate(false); setEditingAlarmId(null); resetForm(); }}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+              >
                 <Text style={s.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={s.createBtn} onPress={handleCreate}>
+              <TouchableOpacity
+                style={s.createBtn}
+                onPress={handleCreate}
+                accessibilityRole="button"
+                accessibilityLabel={editingAlarmId ? "Save alarm" : "Create alarm"}
+              >
                 <Ionicons name="alarm" size={18} color={theme.textOnAccent} />
-                <Text style={s.createBtnText}>Create Alarm</Text>
+                <Text style={s.createBtnText}>{editingAlarmId ? "Save" : "Create Alarm"}</Text>
               </TouchableOpacity>
             </View>
           </View>

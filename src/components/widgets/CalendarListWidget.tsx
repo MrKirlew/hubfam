@@ -43,7 +43,7 @@ export default function CalendarListWidget({ config }: { config: WidgetConfig })
   };
 
   return (
-    <View style={s.container}>
+    <View style={s.container} accessibilityLiveRegion="polite">
       <ScrollView style={s.scroll} nestedScrollEnabled keyboardShouldPersistTaps="handled">
         {/* Calendar section */}
         <View style={s.sectionHeader}>
@@ -90,6 +90,9 @@ export default function CalendarListWidget({ config }: { config: WidgetConfig })
                 style={s.taskRow}
                 onPress={() => toggleTodoItem(list.id, item.id)}
                 activeOpacity={0.7}
+                accessibilityRole="checkbox"
+                accessibilityLabel={`${item.text}`}
+                accessibilityState={{ checked: item.done }}
               >
                 <Ionicons
                   name={item.done ? "checkbox" : "square-outline"}
