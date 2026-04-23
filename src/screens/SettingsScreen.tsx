@@ -82,8 +82,9 @@ export default function SettingsScreen() {
   const setNotificationsEnabled = useAppStore(s => s.setNotificationsEnabled);
   const dndEnabled              = useAppStore(s => s.dndEnabled);
   const setDndEnabled           = useAppStore(s => s.setDndEnabled);
-  const batteryAlertPercent     = useAppStore(s => s.batteryAlertPercent);
-  const setBatteryAlertPercent  = useAppStore(s => s.setBatteryAlertPercent);
+  const batteryAlertPercents       = useAppStore(s => s.batteryAlertPercents);
+  const toggleBatteryAlertPercent  = useAppStore(s => s.toggleBatteryAlertPercent);
+  const clearBatteryAlertPercents  = useAppStore(s => s.clearBatteryAlertPercents);
   const screenBrightness         = useAppStore(s => s.screenBrightness);
   const setScreenBrightnessStore = useAppStore(s => s.setScreenBrightness);
   const lockShowContent    = useAppStore(s => s.lockShowContent);
@@ -1069,36 +1070,60 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          {/* Battery Alert */}
+          {/* Battery Alert (multi-select) */}
           <View style={styles.toolRow}>
             <View style={styles.toolIcon}>
               <Text style={styles.toolIconText}>🔊</Text>
             </View>
             <View style={[styles.toolInfo, { flex: 1 }]}>
-              <Text style={styles.toolName}>Low Battery Alert</Text>
-              <Text style={styles.toolDesc}>{batteryAlertPercent === 0 ? "Off" : `Ring at ${batteryAlertPercent}%`}</Text>
+              <Text style={styles.toolName}>Low Battery Alerts</Text>
+              <Text style={styles.toolDesc}>
+                {batteryAlertPercents.length === 0
+                  ? "Off"
+                  : `Ring at ${[...batteryAlertPercents].sort((a, b) => b - a).map(p => `${p}%`).join(", ")}`}
+              </Text>
             </View>
-            <View style={{ flexDirection: "row", gap: 6 }}>
-              {[0, 10, 15, 20, 30].map(pct => (
-                <TouchableOpacity
-                  key={pct}
-                  onPress={() => setBatteryAlertPercent(pct)}
-                  style={{
-                    paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8,
-                    backgroundColor: batteryAlertPercent === pct ? t.accentBg : t.card,
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={pct === 0 ? "Battery alert off" : `Battery alert at ${pct}%`}
-                  accessibilityState={{ selected: batteryAlertPercent === pct }}
-                >
-                  <Text style={{
-                    fontSize: 12, fontWeight: "600",
-                    color: batteryAlertPercent === pct ? t.accent : t.textSub,
-                  }}>
-                    {pct === 0 ? "Off" : `${pct}%`}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: 280 }}>
+              <TouchableOpacity
+                onPress={clearBatteryAlertPercents}
+                style={{
+                  paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8,
+                  backgroundColor: batteryAlertPercents.length === 0 ? t.accentBg : t.card,
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Turn off all battery alerts"
+                accessibilityState={{ selected: batteryAlertPercents.length === 0 }}
+              >
+                <Text style={{
+                  fontSize: 12, fontWeight: "600",
+                  color: batteryAlertPercents.length === 0 ? t.accent : t.textSub,
+                }}>
+                  Off
+                </Text>
+              </TouchableOpacity>
+              {[10, 15, 20, 30, 50].map(pct => {
+                const selected = batteryAlertPercents.includes(pct);
+                return (
+                  <TouchableOpacity
+                    key={pct}
+                    onPress={() => toggleBatteryAlertPercent(pct)}
+                    style={{
+                      paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8,
+                      backgroundColor: selected ? t.accentBg : t.card,
+                    }}
+                    accessibilityRole="checkbox"
+                    accessibilityLabel={`Battery alert at ${pct}%`}
+                    accessibilityState={{ checked: selected }}
+                  >
+                    <Text style={{
+                      fontSize: 12, fontWeight: "600",
+                      color: selected ? t.accent : t.textSub,
+                    }}>
+                      {pct}%
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
         </View>

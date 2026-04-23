@@ -12,7 +12,7 @@ import * as Notifications from "expo-notifications";
 
 const POLL_INTERVAL_MS = 300_000; // check every 5 minutes (battery-efficient)
 let pollTimer: ReturnType<typeof setInterval> | null = null;
-let alertFired = false; // prevent repeated alerts until charged above threshold
+let firedThresholds = new Set<number>(); // which thresholds have already fired this discharge cycle
 
 /**
  * Get current battery info.
@@ -27,33 +27,43 @@ export async function getBatteryInfo(): Promise<{ level: number; isCharging: boo
 }
 
 /**
- * Start polling battery level. Fires onAlert when level drops below threshold.
- * @param thresholdPercent - Alert when battery drops below this (e.g. 20 = 20%)
- * @param onAlert - Callback fired once when threshold is crossed
+ * Start polling battery level. Fires onAlert each time a configured threshold is crossed
+ * on the way down. Each threshold fires at most once per discharge cycle; charging (or
+ * climbing back above a threshold) re-arms it.
+ *
+ * @param thresholdPercents - List of thresholds, e.g. [30, 20, 10]. Empty = monitor disabled.
+ * @param onAlert - Callback fired once per threshold crossing, receives (level, threshold)
  */
 export function startBatteryMonitor(
-  thresholdPercent: number,
-  onAlert: (level: number) => void
+  thresholdPercents: number[],
+  onAlert: (level: number, threshold: number) => void
 ): void {
   stopBatteryMonitor();
-  if (thresholdPercent <= 0) return;
+  const thresholds = [...thresholdPercents].filter(n => n > 0).sort((a, b) => b - a); // high → low
+  if (thresholds.length === 0) return;
 
-  alertFired = false;
+  firedThresholds = new Set<number>();
 
   pollTimer = setInterval(async () => {
     try {
       const { level, isCharging } = await getBatteryInfo();
 
-      // Reset alert flag if charging or back above threshold
-      if (isCharging || level > thresholdPercent) {
-        alertFired = false;
+      if (isCharging) {
+        firedThresholds.clear();
         return;
       }
 
-      // Fire alert once when dropping below threshold
-      if (level <= thresholdPercent && !alertFired) {
-        alertFired = true;
-        onAlert(level);
+      // Re-arm any threshold we've climbed back above (e.g. brief unplug during charge).
+      for (const t of Array.from(firedThresholds)) {
+        if (level > t) firedThresholds.delete(t);
+      }
+
+      // Fire each threshold we've just dropped below.
+      for (const t of thresholds) {
+        if (level <= t && !firedThresholds.has(t)) {
+          firedThresholds.add(t);
+          onAlert(level, t);
+        }
       }
     } catch {}
   }, POLL_INTERVAL_MS);

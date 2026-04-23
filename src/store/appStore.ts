@@ -198,7 +198,7 @@ interface AppState {
   hubName:             string;
   notificationsEnabled: boolean;
   dndEnabled:          boolean;
-  batteryAlertPercent: number;     // 0 = disabled, 10-50 typical
+  batteryAlertPercents: number[];  // empty = disabled; e.g. [10, 20, 30] fires once per threshold on discharge
   screenBrightness:    number;     // 0.1 to 1.0
   hubPin:              string | null;  // 4-digit PIN to lock the dashboard
   keepAwakeEnabled:    boolean;        // always-on display mode (drains battery)
@@ -236,7 +236,8 @@ interface AppState {
   setSyncing:             (val: boolean) => void;
   setLastSyncTime:        (ts: number) => void;
   setDndEnabled:          (enabled: boolean) => void;
-  setBatteryAlertPercent: (pct: number) => void;
+  toggleBatteryAlertPercent: (pct: number) => void;
+  clearBatteryAlertPercents: () => void;
   setScreenBrightness:    (val: number) => void;
   setHubPin:              (pin: string | null) => void;
   setKeepAwakeEnabled:    (enabled: boolean) => void;
@@ -314,10 +315,10 @@ export const useAppStore = create<AppState>()(
       hubName:              "Family Hub",
       notificationsEnabled: true,
       dndEnabled:          false,
-      batteryAlertPercent: 0,
+      batteryAlertPercents: [],
       screenBrightness:    1.0,
       hubPin:              null,
-      keepAwakeEnabled:    false,
+      keepAwakeEnabled:    true,
       showClockBar:        true,
       syncToGoogle:        true,
       themeName:           "dark" as const,
@@ -371,7 +372,13 @@ export const useAppStore = create<AppState>()(
       setHubName:       (name) => set(s => { s.hubName = name; }),
       setNotificationsEnabled: (enabled) => set(s => { s.notificationsEnabled = enabled; }),
       setDndEnabled:          (enabled) => set(s => { s.dndEnabled = enabled; }),
-      setBatteryAlertPercent: (pct) => set(s => { s.batteryAlertPercent = pct; }),
+      toggleBatteryAlertPercent: (pct) => set(s => {
+        const i = s.batteryAlertPercents.indexOf(pct);
+        if (i === -1) s.batteryAlertPercents.push(pct);
+        else s.batteryAlertPercents.splice(i, 1);
+        s.batteryAlertPercents.sort((a, b) => b - a); // high → low, nicer to read
+      }),
+      clearBatteryAlertPercents: () => set(s => { s.batteryAlertPercents = []; }),
       setScreenBrightness:    (val) => set(s => { s.screenBrightness = val; }),
       setHubPin:              (pin) => set(s => { s.hubPin = pin; }),
       setKeepAwakeEnabled:    (enabled) => set(s => { s.keepAwakeEnabled = enabled; }),
@@ -498,6 +505,25 @@ export const useAppStore = create<AppState>()(
     {
       name:    "family-hub-store",
       storage: createJSONStorage(() => AsyncStorage),
+      version: 2,
+      migrate: (persisted: any, fromVersion: number) => {
+        if (!persisted || typeof persisted !== "object") return persisted;
+        let next = persisted;
+        // v0 → v1: wall-mount dashboard is always-on by product design; flip
+        // any install still carrying the old `false` default to `true` once.
+        if (fromVersion < 1) {
+          next = { ...next, keepAwakeEnabled: true };
+        }
+        // v1 → v2: single `batteryAlertPercent` → multi-select `batteryAlertPercents`.
+        // Preserve the user's existing single threshold as the initial set.
+        if (fromVersion < 2) {
+          const legacy = next.batteryAlertPercent;
+          const seeded = typeof legacy === "number" && legacy > 0 ? [legacy] : [];
+          const { batteryAlertPercent: _drop, ...rest } = next;
+          next = { ...rest, batteryAlertPercents: seeded };
+        }
+        return next;
+      },
       partialize: (state) => {
         const { _hasHydrated, ...rest } = state;
         return { ...rest, isLocked: false, isSyncing: false }; // always start unlocked + sync unlocked

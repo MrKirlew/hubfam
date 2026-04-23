@@ -243,21 +243,25 @@ export default function App() {
     verifyAndReveal();
   }, [hasHydrated]);
 
-  // Battery monitor: start/restart when threshold changes
-  const batteryAlertPercent = useAppStore(s => s.batteryAlertPercent);
+  // Battery monitor: start/restart when threshold set changes
+  const batteryAlertPercents = useAppStore(s => s.batteryAlertPercents);
   const screenBrightnessVal = useAppStore(s => s.screenBrightness);
+
+  // Stable key: the monitor only needs to restart when the *set* changes, not on reorderings.
+  const thresholdsKey = [...batteryAlertPercents].sort((a, b) => a - b).join(",");
 
   useEffect(() => {
     if (!hasHydrated) return;
-    if (batteryAlertPercent > 0) {
-      startBatteryMonitor(batteryAlertPercent, (level) => {
+    if (batteryAlertPercents.length > 0) {
+      startBatteryMonitor(batteryAlertPercents, (level) => {
         playBatteryAlert(level);
       });
     } else {
       stopBatteryMonitor();
     }
     return () => stopBatteryMonitor();
-  }, [hasHydrated, batteryAlertPercent]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasHydrated, thresholdsKey]);
 
   // Restore saved brightness on startup
   useEffect(() => {
