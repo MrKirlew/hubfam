@@ -7,8 +7,9 @@ import type { CalendarEvent } from "../store/appStore";
 
 // Mock the services that SyncOrchestrator depends on
 jest.mock("../services/CalendarSyncService", () => ({
-  syncAllFeeds: jest.fn().mockResolvedValue([]),
+  syncAllFeeds: jest.fn().mockResolvedValue({ events: [], failedFeedIds: [] }),
   loadCachedEvents: jest.fn().mockResolvedValue([]),
+  saveCachedEvents: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock("../services/GoogleTasksService", () => ({
@@ -53,7 +54,7 @@ beforeEach(() => {
 describe("performSync", () => {
   it("preserves manual events after sync", async () => {
     useAppStore.setState({ events: [manualEvent] });
-    mockSyncAllFeeds.mockResolvedValueOnce([syncedEvent]);
+    mockSyncAllFeeds.mockResolvedValueOnce({ events: [syncedEvent], failedFeedIds: [] });
 
     await performSync();
 
@@ -68,13 +69,40 @@ describe("performSync", () => {
     useAppStore.setState({ events: [oldSynced] });
 
     const newSynced: CalendarEvent = { ...syncedEvent, title: "New Title" };
-    mockSyncAllFeeds.mockResolvedValueOnce([newSynced]);
+    mockSyncAllFeeds.mockResolvedValueOnce({ events: [newSynced], failedFeedIds: [] });
 
     await performSync();
 
     const events = useAppStore.getState().events;
     expect(events).toHaveLength(1);
     expect(events[0].title).toBe("New Title");
+  });
+
+  it("preserves prior events for a feed that FAILED to sync (no wipe)", async () => {
+    // feed-1's events already in the store from a prior good sync.
+    const existing: CalendarEvent = { ...syncedEvent, title: "Existing" };
+    useAppStore.setState({ events: [existing] });
+
+    // This round: feed-1 fails (auth/network) → no fresh events, feed-1 marked failed.
+    mockSyncAllFeeds.mockResolvedValueOnce({ events: [], failedFeedIds: ["feed-1"] });
+
+    await performSync();
+
+    const events = useAppStore.getState().events;
+    expect(events).toHaveLength(1);
+    expect(events[0].id).toBe("synced-1");
+    expect(events[0].title).toBe("Existing");
+  });
+
+  it("clears events for a feed that succeeded with zero events", async () => {
+    // feed-1 previously had an event, but the calendar is now genuinely empty
+    // and the fetch SUCCEEDED (feed not in failedFeedIds) → event should clear.
+    useAppStore.setState({ events: [syncedEvent] });
+    mockSyncAllFeeds.mockResolvedValueOnce({ events: [], failedFeedIds: [] });
+
+    await performSync();
+
+    expect(useAppStore.getState().events).toHaveLength(0);
   });
 
   it("skips sync if already syncing", async () => {
@@ -89,7 +117,7 @@ describe("performSync", () => {
     let wasSyncing = false;
     mockSyncAllFeeds.mockImplementation(async () => {
       wasSyncing = useAppStore.getState().isSyncing;
-      return [syncedEvent];
+      return { events: [syncedEvent], failedFeedIds: [] };
     });
 
     await performSync();
@@ -99,7 +127,7 @@ describe("performSync", () => {
   });
 
   it("updates lastSyncTime on success", async () => {
-    mockSyncAllFeeds.mockResolvedValueOnce([]);
+    mockSyncAllFeeds.mockResolvedValueOnce({ events: [], failedFeedIds: [] });
 
     await performSync();
 
@@ -126,7 +154,7 @@ describe("performSync", () => {
         reminder: "10", source: "manual", externalId: null,
       };
       useAppStore.getState().addEvent(midSyncEvent);
-      return [syncedEvent];
+      return { events: [syncedEvent], failedFeedIds: [] };
     });
 
     await performSync();

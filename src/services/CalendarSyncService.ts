@@ -53,6 +53,45 @@ export interface CalendarEvent {
 
 const TOKEN_PREFIX = "google_refresh_token_";
 
+// Token exchange is proxied through a server-side endpoint (a Cloudflare Worker,
+// see token-worker/) because exchanging/refreshing against the Google *Web* OAuth
+// client requires the client secret, which must never ship inside the app.
+const TOKEN_EXCHANGE_URL = process.env.EXPO_PUBLIC_TOKEN_EXCHANGE_URL;
+const TOKEN_EXCHANGE_KEY = process.env.EXPO_PUBLIC_TOKEN_EXCHANGE_KEY;
+
+type TokenExchangePayload =
+  | { grant: "code"; code: string }
+  | { grant: "refresh"; refresh_token: string };
+
+/**
+ * Call the server-side token-exchange endpoint. Returns Google's token JSON
+ * (`{ access_token, refresh_token?, expires_in }`) or null on any failure.
+ */
+async function tokenExchange(payload: TokenExchangePayload): Promise<any | null> {
+  if (!TOKEN_EXCHANGE_URL) {
+    console.error("[GoogleSignin] EXPO_PUBLIC_TOKEN_EXCHANGE_URL is missing — background/multi-account sync cannot refresh tokens.");
+    return null;
+  }
+  try {
+    const res = await fetch(TOKEN_EXCHANGE_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(TOKEN_EXCHANGE_KEY ? { "X-Hub-Token": TOKEN_EXCHANGE_KEY } : {}),
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      console.log(`[GoogleSignin] Token endpoint returned ${res.status}`);
+      return null;
+    }
+    return await res.json();
+  } catch (err) {
+    console.error("[GoogleSignin] Token endpoint unreachable:", err);
+    return null;
+  }
+}
+
 // ── Google Sign-In Setup ──────────────────────────────────────────────────────
 
 /**
@@ -86,66 +125,33 @@ function getSafeKey(email: string): string {
 }
 
 /**
- * Exchange serverAuthCode for refresh_token and store it in SecureStore.
- * This allows background sync for multiple accounts.
- * Note: Mobile/installed apps do not send client_secret per Google OAuth2 spec.
+ * Exchange the one-time serverAuthCode for a refresh_token (via the server-side
+ * endpoint) and store it in SecureStore, enabling background sync for EVERY
+ * connected account — not just the SDK's single live session.
  */
 async function exchangeAndStoreToken(email: string, code: string): Promise<void> {
   if (!email) return;
-  try {
-    const res = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        code,
-        client_id: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? "",
-        grant_type: "authorization_code",
-        redirect_uri: "",
-      }).toString(),
-    });
-
-    const data = await res.json();
-    if (data.refresh_token) {
-      await SecureStore.setItemAsync(TOKEN_PREFIX + getSafeKey(email), data.refresh_token);
-      console.log(`[GoogleSignin] Stored refresh token for ${email}`);
-    } else {
-      console.log(`[GoogleSignin] No refresh token returned for ${email}. SDK tokens will be used as fallback.`);
-    }
-  } catch (err) {
-    console.error(`[GoogleSignin] Token exchange error for ${email}:`, err);
+  const data = await tokenExchange({ grant: "code", code });
+  if (data?.refresh_token) {
+    await SecureStore.setItemAsync(TOKEN_PREFIX + getSafeKey(email), data.refresh_token);
+    console.log(`[GoogleSignin] Stored refresh token for ${email}`);
+  } else {
+    console.log(`[GoogleSignin] No refresh token returned for ${email}. SDK tokens will be used as fallback.`);
   }
 }
 
 /**
- * Manually refresh an access token using a stored refresh token.
- * Note: Mobile/installed apps do not send client_secret per Google OAuth2 spec.
+ * Refresh an access token for a specific account using its stored refresh token,
+ * via the server-side endpoint (which holds the Web client secret).
  */
 async function refreshAccessTokenManually(email: string): Promise<string | null> {
   if (!email) return null;
-  try {
-    const refreshToken = await SecureStore.getItemAsync(TOKEN_PREFIX + getSafeKey(email));
-    if (!refreshToken) return null;
-
-    const res = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        refresh_token: refreshToken,
-        client_id: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? "",
-        grant_type: "refresh_token",
-      }).toString(),
-    });
-
-    const data = await res.json();
-    if (data.access_token) {
-      return data.access_token;
-    }
-    console.log(`[GoogleSignin] Manual refresh failed for ${email}. User may need to re-authenticate.`);
-    return null;
-  } catch (err) {
-    console.error(`[GoogleSignin] Manual refresh error for ${email}:`, err);
-    return null;
-  }
+  const refreshToken = await SecureStore.getItemAsync(TOKEN_PREFIX + getSafeKey(email));
+  if (!refreshToken) return null;
+  const data = await tokenExchange({ grant: "refresh", refresh_token: refreshToken });
+  if (data?.access_token) return data.access_token;
+  console.log(`[GoogleSignin] Manual refresh failed for ${email}. User may need to re-authenticate.`);
+  return null;
 }
 
 /**
@@ -194,18 +200,42 @@ async function getValidAccessToken(email: string): Promise<string> {
  */
 export async function connectGoogleCalendar(): Promise<string> {
   await GoogleSignin.hasPlayServices();
-  
-  // 1. Force sign out to ensure the account picker appears
+
+  // Sign out first so the account picker appears (lets the user choose any account).
   try {
     await GoogleSignin.signOut();
   } catch (e) {
-    // Ignore sign-out errors
+    // Already signed out — fall through.
   }
 
-  // 2. Perform interactive sign-in
-  const userInfo = await GoogleSignin.signIn();
-  
-  // 3. Exchange auth code for refresh token if available
+  let userInfo = await GoogleSignin.signIn();
+
+  // Google's OAuth server only returns a serverAuthCode (needed to mint a
+  // refresh_token) on the FIRST consent per (client_id, account). If this
+  // account was already consented, no code comes back. In that case revoke
+  // THIS account's grant — it is now the active session, so the revoke is
+  // scoped to exactly the account being (re)connected — then sign in again to
+  // force fresh consent and obtain a code.
+  //
+  // The previous implementation revoked BEFORE sign-in, which revoked whatever
+  // account happened to be the active session — i.e. a *different*,
+  // previously-connected account — silently killing its stored refresh token
+  // and breaking multi-account sync. Doing it here, post-sign-in, keeps every
+  // other account's grant intact.
+  if (!userInfo.serverAuthCode) {
+    try {
+      await GoogleSignin.revokeAccess();
+    } catch (e) {
+      // No active grant to revoke — fall through.
+    }
+    try {
+      await GoogleSignin.signOut();
+    } catch (e) {
+      // Already signed out — fall through.
+    }
+    userInfo = await GoogleSignin.signIn();
+  }
+
   if (userInfo.serverAuthCode) {
     await exchangeAndStoreToken(userInfo.user.email, userInfo.serverAuthCode);
   } else {
@@ -308,6 +338,26 @@ export async function unsubscribeFromCalendar(email: string, calendarId: string)
 // ── Google Calendar Events ───────────────────────────────────────────────────
 
 /**
+ * Convert an RFC3339 dateTime (e.g. "2026-07-12T19:30:00-05:00" or "...Z") into
+ * the DEVICE-LOCAL calendar day + time. Parsing via `new Date` honours the
+ * embedded offset; formatting via the local getters yields the day the user
+ * actually sees, so timed events match the dashboard widgets' local-day filter.
+ */
+function toLocalDateTimeParts(dateTime: string): { date: string; time: string } {
+  const d = new Date(dateTime);
+  if (isNaN(d.getTime())) {
+    // Unparseable — fall back to the naive substring so we degrade, not crash.
+    return { date: dateTime.substring(0, 10), time: dateTime.substring(11, 16) };
+  }
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return { date: `${yyyy}-${mm}-${dd}`, time: `${hh}:${min}` };
+}
+
+/**
  * Fetch events from a Google Calendar account for a date range.
  */
 export async function fetchGoogleCalendarEvents(
@@ -367,12 +417,20 @@ export async function fetchGoogleCalendarEvents(
         if (!item.start) continue;
 
         const isAllDay = Boolean(item.start.date);
-        const dateStr = isAllDay
-          ? item.start.date
-          : (item.start.dateTime ? item.start.dateTime.substring(0, 10) : "");
-        const timeStr = isAllDay
-          ? "00:00"
-          : (item.start.dateTime ? item.start.dateTime.substring(11, 16) : "00:00");
+        let dateStr = "";
+        let timeStr = "00:00";
+        if (isAllDay) {
+          // All-day events carry a plain, timezone-agnostic YYYY-MM-DD.
+          dateStr = item.start.date;
+        } else if (item.start.dateTime) {
+          // Timed events: resolve to the DEVICE-LOCAL day/time so they match the
+          // widgets' local `fmtDate(new Date())` comparison. A naive substring
+          // would keep Google's returned offset and could shift an evening event
+          // onto the next/previous calendar day.
+          const parts = toLocalDateTimeParts(item.start.dateTime);
+          dateStr = parts.date;
+          timeStr = parts.time;
+        }
 
         if (!dateStr) continue;
 
@@ -651,15 +709,27 @@ export async function fetchNativeCalendarEvents(
 
 const SYNC_CACHE_KEY = "calendar_sync_cache";
 
+export interface SyncResult {
+  events: CalendarEvent[];
+  /**
+   * Feed ids whose fetch threw this round (auth/network/API failure). The caller
+   * must PRESERVE these feeds' previously-synced events rather than wiping them —
+   * a transient token failure should never blank out already-fetched events.
+   */
+  failedFeedIds: string[];
+}
+
 /**
- * Sync all enabled feeds for a member and return merged events.
+ * Sync all enabled feeds for a member and return merged events plus the ids of
+ * any feeds that failed to fetch.
  */
 export async function syncAllFeeds(
   feeds: CalendarFeed[],
   fromDate: Date,
   toDate: Date
-): Promise<CalendarEvent[]> {
+): Promise<SyncResult> {
   const allEvents: CalendarEvent[] = [];
+  const failedFeedIds: string[] = [];
   const enabledFeeds = feeds.filter(f => f.enabled);
 
   console.log(`[Sync] Starting sync for ${enabledFeeds.length} enabled feeds`);
@@ -705,13 +775,29 @@ export async function syncAllFeeds(
       // through the store action instead.
       useAppStore.getState().updateFeed(feed.id, { lastSynced: Date.now() });
     } catch (err) {
+      // Fetch failed (auth/network/API). Record the feed id so the caller can
+      // PRESERVE this feed's previously-synced events instead of wiping them.
+      failedFeedIds.push(feed.id);
       console.log(`[Sync] Failed to sync feed ${feed.name}:`, err);
     }
   }
 
-  console.log(`[Sync] Finished sync: total ${allEvents.length} events across all feeds`);
-  await AsyncStorage.setItem(SYNC_CACHE_KEY, JSON.stringify(allEvents));
-  return allEvents;
+  console.log(`[Sync] Finished sync: ${allEvents.length} events across all feeds (${failedFeedIds.length} feed(s) failed)`);
+  // Persistence is owned by the caller (SyncOrchestrator.performSync): it merges
+  // these results with preserved events from failed feeds and writes the cache,
+  // so a partial/failed sync never overwrites the cache with a truncated set.
+  return { events: allEvents, failedFeedIds };
+}
+
+/** Persist the synced (non-manual) events so they display instantly on next
+ *  startup. Owned by SyncOrchestrator.performSync after it merges in preserved
+ *  events from feeds that failed this round. */
+export async function saveCachedEvents(events: CalendarEvent[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(SYNC_CACHE_KEY, JSON.stringify(events));
+  } catch (err) {
+    console.warn("[Sync] Failed to write event cache:", err);
+  }
 }
 
 /** Load cached events when offline or before first sync.

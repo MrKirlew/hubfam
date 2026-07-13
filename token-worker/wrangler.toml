@@ -1,0 +1,8 @@
+name = "familyhub-token-exchange"
+main = "src/index.js"
+compatibility_date = "2024-11-06"
+
+# Secrets (set via `wrangler secret put`, never committed):
+#   GOOGLE_CLIENT_ID      — the Web OAuth client id (…t9k78rem….apps.googleusercontent.com)
+#   GOOGLE_CLIENT_SECRET  — that Web client's secret (server-side only)
+#   SHARED_TOKEN          — random shared token the app sends in the X-Hub-Token header

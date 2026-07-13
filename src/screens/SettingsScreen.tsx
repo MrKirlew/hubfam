@@ -154,6 +154,7 @@ export default function SettingsScreen() {
   const [calMemberId, setCalMemberId] = useState<string | null>(null);
   const [calColor, setCalColor] = useState("#60a5fa");
   const [connectingGoogle, setConnectingGoogle] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
 
   // Google calendar picker state (step 2 of gcal add flow)
   const [showCalPicker, setShowCalPicker] = useState(false);
@@ -304,6 +305,34 @@ export default function SettingsScreen() {
       setCalColor("#60a5fa");
       setShowAddCal(false);
       performSync();
+    }
+  };
+
+  // Re-authenticate an already-connected Google account when its refresh token
+  // expires. Without this path, users had to open Add Calendar → Google →
+  // Sign-in and accept a confusing "No New Calendars" alert just to refresh
+  // credentials. connectGoogleCalendar() writes a fresh refresh_token to
+  // SecureStore; performSync() then drains the auth-failure backlog.
+  const handleReconnectGoogle = async () => {
+    if (reconnecting) return;
+    setReconnecting(true);
+    try {
+      const email = await connectGoogleCalendar();
+      await performSync();
+      Alert.alert(
+        "Reconnected",
+        `Signed in as ${email}. Your calendars are syncing now.`,
+      );
+    } catch (err: any) {
+      if (err?.code !== "SIGN_IN_CANCELLED" && err?.code !== "12501") {
+        const code = err?.code ? ` (code ${err.code})` : "";
+        Alert.alert(
+          "Sign-In Failed",
+          `${err?.message || "Please try again."}${code}`,
+        );
+      }
+    } finally {
+      setReconnecting(false);
     }
   };
 
@@ -643,6 +672,34 @@ export default function SettingsScreen() {
 
         {/* ═══════ ACCOUNTS TAB ═══════ */}
         {activeTab === "accounts" && (<>
+
+        {/* ── Reconnect banner — shown whenever any Google-backed feed exists ── */}
+        {feeds.some(f => f.type === "gcal") && (
+          <TouchableOpacity
+            style={styles.reconnectBanner}
+            onPress={handleReconnectGoogle}
+            disabled={reconnecting}
+            accessibilityRole="button"
+            accessibilityLabel={reconnecting ? "Reconnecting Google account" : "Reconnect a Google account"}
+            accessibilityHint="Refreshes Google sign-in when calendar events stop appearing"
+            accessibilityState={{ disabled: reconnecting, busy: reconnecting }}
+          >
+            <Ionicons
+              name={reconnecting ? "sync-circle" : "refresh-circle-outline"}
+              size={26}
+              color={t.accent}
+            />
+            <View style={styles.reconnectText}>
+              <Text style={styles.reconnectTitle}>
+                {reconnecting ? "Reconnecting…" : "Reconnect a Google account"}
+              </Text>
+              <Text style={styles.reconnectSub}>
+                Tap if calendar events stop appearing. Re-authenticates the account and refreshes your events.
+              </Text>
+            </View>
+            {reconnecting && <ActivityIndicator size="small" color={t.accent} />}
+          </TouchableOpacity>
+        )}
 
         {/* ── Calendar Feeds ─────────────────────────────────────── */}
         <View style={styles.sectionHeader}>
@@ -1618,11 +1675,20 @@ export default function SettingsScreen() {
             />
 
             {calType === "gcal" ? (
-              <View style={[styles.modalInput, { justifyContent: "center", alignItems: "center", borderStyle: "dashed" }]}>
-                <Text style={{ color: t.textSub, fontSize: 13 }}>
+              <TouchableOpacity
+                style={[styles.modalInput, { justifyContent: "center", alignItems: "center", borderStyle: "dashed", flexDirection: "row", gap: 8 }]}
+                onPress={handleAddCalendar}
+                disabled={connectingGoogle || loadingCalList}
+                accessibilityRole="button"
+                accessibilityLabel={connectingGoogle ? "Connecting to Google" : loadingCalList ? "Loading calendars" : "Sign in to pick specific Google calendars"}
+                accessibilityState={{ disabled: connectingGoogle || loadingCalList, busy: connectingGoogle || loadingCalList }}
+              >
+                {(connectingGoogle || loadingCalList) && <ActivityIndicator size="small" color={t.accent} />}
+                <Ionicons name="logo-google" size={16} color={t.textSub} />
+                <Text style={{ color: t.textSub, fontSize: 13, fontWeight: "600" }}>
                   {connectingGoogle ? "Connecting..." : loadingCalList ? "Loading calendars..." : "Sign in to pick specific calendars"}
                 </Text>
-              </View>
+              </TouchableOpacity>
             ) : (
               <>
                 <TextInput
@@ -1892,6 +1958,15 @@ function getStyles(t: Theme) {
     feedName:        { fontSize: 15, fontWeight: "600", color: t.text },
     feedMeta:        { fontSize: 12, color: t.textSub, marginTop: 2 },
     feedDelete:      { padding: 14 },
+
+    // Reconnect banner (Accounts tab)
+    reconnectBanner: { flexDirection: "row", alignItems: "center", gap: 12,
+                       backgroundColor: t.accentBg, borderWidth: 1,
+                       borderColor: `${t.accent}4D`, borderRadius: 12,
+                       paddingHorizontal: 14, paddingVertical: 12, marginTop: 8 },
+    reconnectText:   { flex: 1 },
+    reconnectTitle:  { fontSize: 15, fontWeight: "600", color: t.accent },
+    reconnectSub:    { fontSize: 12, color: t.textSub, marginTop: 2 },
 
     // Tool rows
     toolRow:         { flexDirection: "row", alignItems: "center", padding: 16, gap: 14 },
