@@ -18,6 +18,10 @@ export interface HubMessage {
   expiresAt?: number | null;
   /** Play a sound on the hub when delivered (alerts always do; this makes a note loud too). */
   loud?: boolean;
+  /** Hub sound playback volume, 0–1. Omitted = full volume. */
+  soundVolume?: number;
+  /** Repeat the hub sound for this many seconds (dismissing the message stops it early). Omitted = play once. */
+  soundSeconds?: number;
   /** Epoch ms to deliver at; until then the message is held (hidden, no sound/overlay). */
   scheduledFor?: number | null;
 }

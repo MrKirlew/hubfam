@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAppStore } from "../../store/appStore";
 import { useTheme } from "../../hooks/useTheme";
 import type { Theme } from "../../theme";
+import { stopHubSound } from "../../services/HubSound";
 
 function timeAgo(ts: number, now: number): string {
   const s = Math.max(0, Math.floor((now - ts) / 1000));
@@ -55,7 +56,10 @@ export default function MessageBoardWidget() {
               {m.title || (m.from === "hub" ? "Family Hub" : m.from)}
             </Text>
             <TouchableOpacity
-              onPress={() => dismiss(m.id)}
+              onPress={() => {
+                stopHubSound(); // dismissing a beeping message silences it
+                dismiss(m.id);
+              }}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               accessibilityRole="button"
               accessibilityLabel="Dismiss message"

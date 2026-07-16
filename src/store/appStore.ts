@@ -235,6 +235,8 @@ interface AppState {
   household:          Household | null;
   pairedDevices:      PairedDevice[];
   hubMessages:        HubMessage[];
+  /** Ids the user dismissed — kept (bounded) so a relay replay can't resurrect them. */
+  dismissedHubMessageIds: string[];
   sharedLists:        SharedList[];
   activeAlertMessage: HubMessage | null;   // transient — drives the full-screen alert overlay
 
@@ -402,6 +404,7 @@ export const useAppStore = create<AppState>()(
       household:          null,
       pairedDevices:      [],
       hubMessages:        SEED_HUB_MESSAGES,
+      dismissedHubMessageIds: [],
       sharedLists:        [],
       activeAlertMessage: null,
 
@@ -546,12 +549,15 @@ export const useAppStore = create<AppState>()(
       }),
       addHubMessage:      (m) => set(s => {
         if (s.hubMessages.some(x => x.id === m.id)) return; // idempotent (dedup already happens upstream)
+        if (s.dismissedHubMessageIds.includes(m.id)) return; // tombstoned — a relay replay must not resurrect it
         s.hubMessages.unshift(m);
         if (s.hubMessages.length > 50) s.hubMessages = s.hubMessages.slice(0, 50);
         if (m.kind === "alert" && (m.scheduledFor == null || m.scheduledFor <= Date.now())) s.activeAlertMessage = m;
       }),
       dismissHubMessage:  (id) => set(s => {
         s.hubMessages = s.hubMessages.filter(x => x.id !== id);
+        s.dismissedHubMessageIds.unshift(id);
+        if (s.dismissedHubMessageIds.length > 300) s.dismissedHubMessageIds = s.dismissedHubMessageIds.slice(0, 300);
         if (s.activeAlertMessage && s.activeAlertMessage.id === id) s.activeAlertMessage = null;
       }),
       setActiveAlertMessage: (m) => set(s => { s.activeAlertMessage = m; }),
@@ -561,7 +567,7 @@ export const useAppStore = create<AppState>()(
       }),
       // Reconcile via the shared LWW op-log; compute on plain state to avoid mixing Immer drafts with the pure reducer.
       applyHubListOp:     (op) => { const next = applyOp(get().sharedLists, op); set(s => { s.sharedLists = next; }); },
-      clearSharing:       () => set(s => { s.household = null; s.pairedDevices = []; s.sharedLists = []; s.activeAlertMessage = null; }),
+      clearSharing:       () => set(s => { s.household = null; s.pairedDevices = []; s.sharedLists = []; s.activeAlertMessage = null; s.dismissedHubMessageIds = []; }),
 
       pendingTaskMutations: [],
       addPendingMutation: (m) => set(s => { s.pendingTaskMutations.push(m); }),

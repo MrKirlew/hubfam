@@ -256,19 +256,12 @@ export class HouseholdDO extends DurableObject<Env> {
     const server = pair[1];
     this.ctx.acceptWebSocket(server, [dev.deviceId]);
 
-    // Replay everything the device has not yet acknowledged.
-    const since = Number(this.sql.exec(`SELECT lastSeq FROM cursors WHERE deviceId=?`, dev.deviceId).toArray()[0]?.lastSeq || 0);
-    const backlog = this.sql
-      .exec(`SELECT seq, ciphertext FROM messages WHERE seq > ? ORDER BY seq ASC`, since)
-      .toArray()
-      .map((r: any) => ({ seq: r.seq, ...JSON.parse(r.ciphertext) }));
-    for (const env of backlog) {
-      try {
-        server.send(JSON.stringify(env));
-      } catch {
-        /* ignore */
-      }
-    }
+    // No server-side backlog replay here: clients run GET /state?since=<their
+    // cursor> on every (re)connect, which is the single source of truth for
+    // catch-up. The old replay keyed off the server cursor (advanced only by
+    // /state), so anything delivered live since the device's last /state was
+    // replayed again on reconnect — resurrecting messages the user had
+    // already dismissed on the hub.
     return new Response(null, { status: 101, webSocket: client });
   }
 

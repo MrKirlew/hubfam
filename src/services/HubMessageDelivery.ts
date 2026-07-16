@@ -15,7 +15,8 @@ function fireEffects(m: HubMessage): void {
   fired.add(m.id);
   const store = useAppStore.getState();
   if (m.kind === "alert") store.setActiveAlertMessage(m);
-  if (m.kind === "alert" || m.loud) playHubSound(m.kind === "alert" ? "alert" : "loud");
+  if (m.kind === "alert" || m.loud)
+    playHubSound(m.kind === "alert" ? "alert" : "loud", { volume: m.soundVolume, seconds: m.soundSeconds });
 }
 
 /** A message arrived from a phone: store it, and fire effects if it's due now. */
