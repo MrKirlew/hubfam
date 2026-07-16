@@ -61,8 +61,22 @@ async function routeInbound(env: Envelope): Promise<void> {
   }
 }
 
+let starting = false;
+
 export async function startHubTransport(): Promise<void> {
-  if (router) return; // already running
+  // `starting` guards the async gap between this check and `router` being set —
+  // at launch two effects invoke this concurrently (boot call + household effect)
+  // and without it both would build a transport and open two WebSockets.
+  if (router || starting) return; // already running or mid-start
+  starting = true;
+  try {
+    await doStartHubTransport();
+  } finally {
+    starting = false;
+  }
+}
+
+async function doStartHubTransport(): Promise<void> {
   const household = useAppStore.getState().household;
   if (!household || !RELAY_URL) {
     console.log("[HubTransport] Companion sharing not configured — idle.");
