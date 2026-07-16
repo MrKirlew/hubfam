@@ -15,9 +15,18 @@ export * from "./crypto/webcrypto";
 // Transport
 export * from "./transport/Transport";
 export * from "./transport/TransportRouter";
+export * from "./transport/CloudTransport";
+export * from "./transport/BleLink";
+export * from "./transport/BleTransport";
 export * from "./transport/framing";
 export * from "./transport/dedup";
 export * from "./transport/outbox";
+
+// Networking + pairing
+export * from "./net/http";
+export * from "./net/RelayClient";
+export * from "./pairing/qr";
+export * from "./pairing/pairing";
 
 // List sync
 export * from "./list-sync/reconcile";
