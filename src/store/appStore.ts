@@ -308,6 +308,7 @@ interface AppState {
   setActiveAlertMessage: (m: HubMessage | null) => void;
   upsertSharedList:      (l: SharedList) => void;
   applyHubListOp:        (op: ListOp) => void;
+  clearSharing:          () => void;
 
   pendingTaskMutations: PendingTaskMutation[];
   addPendingMutation:   (m: PendingTaskMutation) => void;
@@ -560,6 +561,7 @@ export const useAppStore = create<AppState>()(
       }),
       // Reconcile via the shared LWW op-log; compute on plain state to avoid mixing Immer drafts with the pure reducer.
       applyHubListOp:     (op) => { const next = applyOp(get().sharedLists, op); set(s => { s.sharedLists = next; }); },
+      clearSharing:       () => set(s => { s.household = null; s.pairedDevices = []; s.sharedLists = []; s.activeAlertMessage = null; }),
 
       pendingTaskMutations: [],
       addPendingMutation: (m) => set(s => { s.pendingTaskMutations.push(m); }),

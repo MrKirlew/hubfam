@@ -29,7 +29,12 @@ import { deliverMessage } from "./HubMessageDelivery";
 
 const RELAY_URL = process.env.EXPO_PUBLIC_RELAY_URL ?? "";
 const DEVICE_TOKEN_KEY = "familyhub_device_token";
-const CURSOR_KEY = "familyhub_cloud_cursor";
+// Cursor is namespaced per household: a cursor carried over from a previous
+// household (e.g. after "Reset sharing" onto a new relay) would otherwise make
+// GET /state?since=<stale> skip everything the new household's DO holds — and
+// the relay persists max(since, …) server-side, suppressing WS replay too.
+export const CURSOR_KEY_PREFIX = "familyhub_cloud_cursor";
+const cursorKeyFor = (householdId: string) => `${CURSOR_KEY_PREFIX}_${householdId}`;
 
 let router: TransportRouter | null = null;
 let cloud: CloudTransport | null = null;
@@ -56,8 +61,22 @@ async function routeInbound(env: Envelope): Promise<void> {
   }
 }
 
+let starting = false;
+
 export async function startHubTransport(): Promise<void> {
-  if (router) return; // already running
+  // `starting` guards the async gap between this check and `router` being set —
+  // at launch two effects invoke this concurrently (boot call + household effect)
+  // and without it both would build a transport and open two WebSockets.
+  if (router || starting) return; // already running or mid-start
+  starting = true;
+  try {
+    await doStartHubTransport();
+  } finally {
+    starting = false;
+  }
+}
+
+async function doStartHubTransport(): Promise<void> {
   const household = useAppStore.getState().household;
   if (!household || !RELAY_URL) {
     console.log("[HubTransport] Companion sharing not configured — idle.");
@@ -69,7 +88,8 @@ export async function startHubTransport(): Promise<void> {
     return;
   }
 
-  cursor = Number((await AsyncStorage.getItem(CURSOR_KEY)) || "0");
+  const cursorKey = cursorKeyFor(household.id);
+  cursor = Number((await AsyncStorage.getItem(cursorKey)) || "0");
   const contentKeyB64 = await SecureStore.getItemAsync("familyhub_content_key").catch(() => null);
   if (contentKeyB64) contentSession = new SessionCrypto(getCryptoProvider(), b64decode(contentKeyB64));
   const relay = new RelayClient({ baseUrl: RELAY_URL, fetchFn: fetch as any, deviceToken });
@@ -83,7 +103,7 @@ export async function startHubTransport(): Promise<void> {
     getCursor: () => cursor,
     setCursor: (s) => {
       cursor = s;
-      void AsyncStorage.setItem(CURSOR_KEY, String(s));
+      void AsyncStorage.setItem(cursorKey, String(s));
     },
     reconnect: { baseMs: 1000, maxMs: 30000 },
   });
@@ -106,4 +126,5 @@ export async function stopHubTransport(): Promise<void> {
   router = null;
   cloud = null;
   contentSession = null;
+  cursor = 0;
 }

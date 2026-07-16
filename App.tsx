@@ -51,6 +51,7 @@ const HYDRATION_TIMEOUT_MS = 5000;
 
 export default function App() {
   const hasHydrated  = useAppStore(s => s._hasHydrated);
+  const householdId  = useAppStore(s => s.household?.id);
 
   const [appReady, setAppReady] = useState(false);
   const appState = useRef(AppState.currentState);
@@ -195,6 +196,17 @@ export default function App() {
       stopHubTransport();
     };
   }, [hasHydrated]);
+
+  // (Re)start the companion transport whenever a household is configured — the
+  // launch-time call above no-ops when sharing isn't set up yet, so a mid-session
+  // "Set up sharing" (or reset → re-setup) must trigger a fresh connect here.
+  // startHubTransport() is idempotent while running; resetSharing() stops it.
+  useEffect(() => {
+    if (!hasHydrated || !householdId) return;
+    startHubTransport().catch((err: any) => {
+      console.error("[App] Failed to start hub transport:", err);
+    });
+  }, [hasHydrated, householdId]);
 
   // Gate: wait for store hydration, clean orphan data, then reveal app
   useEffect(() => {

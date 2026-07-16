@@ -5,6 +5,7 @@
  * holds non-secret identity (household id/name, paired device list).
  */
 import * as SecureStore from "expo-secure-store";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   RelayClient,
   createHubHousehold,
@@ -15,6 +16,7 @@ import {
 } from "@familyhub/shared";
 import { useAppStore } from "../store/appStore";
 import { getCryptoProvider } from "./crypto";
+import { stopHubTransport, CURSOR_KEY_PREFIX } from "./HubTransportService";
 
 const RELAY_URL = process.env.EXPO_PUBLIC_RELAY_URL ?? "";
 // Fixed 128-bit FamilyHub BLE service UUID (companions filter advertisements on this).
@@ -80,4 +82,25 @@ export async function revokeDevice(deviceId: string): Promise<void> {
   const relay = new RelayClient({ baseUrl: RELAY_URL, fetchFn: fetch as any, deviceToken });
   await relay.revokeDevice(household.id, deviceId);
   useAppStore.getState().revokePairedDevice(deviceId);
+}
+
+/** Tear down sharing on this hub (disconnect, wipe secrets + household state) so it can be set up fresh — e.g. after moving to a new relay. */
+export async function resetSharing(): Promise<void> {
+  await stopHubTransport();
+  await Promise.all([
+    SecureStore.deleteItemAsync(K_DEVICE_TOKEN),
+    SecureStore.deleteItemAsync(K_HOUSEHOLD_SECRET),
+    SecureStore.deleteItemAsync(K_CONTENT_KEY),
+    SecureStore.deleteItemAsync(K_BLE_SECRET),
+  ]);
+  // Drop per-household sync cursors and the persisted outbox: queued envelopes
+  // were sealed with the keys just wiped, so they can never be delivered.
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const stale = keys.filter((k) => k.startsWith(CURSOR_KEY_PREFIX) || k === "familyhub_outbox");
+    if (stale.length) await AsyncStorage.multiRemove(stale);
+  } catch {
+    /* non-fatal — namespaced cursors make leftovers harmless */
+  }
+  useAppStore.getState().clearSharing();
 }
