@@ -17,7 +17,7 @@ export interface PairingPayload {
   bleSecret: string; // base64
 }
 
-const REQUIRED: Array<keyof PairingPayload> = [
+const REQUIRED: (keyof PairingPayload)[] = [
   "householdId",
   "relayUrl",
   "wsUrl",

@@ -197,7 +197,7 @@ export default function AlarmScheduleScreen() {
             <View style={s.alarmInfo}>
               <Text style={s.alarmLabel}>{a.label}</Text>
               <Text style={s.alarmDesc}>{describeAlarm(a)}</Text>
-              {a.message ? <Text style={s.alarmMsg} numberOfLines={1}>"{a.message}"</Text> : null}
+              {a.message ? <Text style={s.alarmMsg} numberOfLines={1}>&quot;{a.message}&quot;</Text> : null}
               {a.soundName && a.soundName !== "none" ? (
                 <Text style={s.alarmSound}>🔊 {a.soundName}</Text>
               ) : null}

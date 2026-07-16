@@ -663,7 +663,7 @@ export default function SettingsScreen() {
 
           {members.length === 0 && (
             <View style={styles.emptyRow}>
-              <Text style={styles.emptyText}>No family members yet. Tap "Add" above.</Text>
+              <Text style={styles.emptyText}>No family members yet. Tap &quot;Add&quot; above.</Text>
             </View>
           )}
         </View>
@@ -759,7 +759,7 @@ export default function SettingsScreen() {
 
           {feeds.length === 0 && (
             <View style={styles.emptyRow}>
-              <Text style={styles.emptyText}>No calendars connected. Tap "Add" above.</Text>
+              <Text style={styles.emptyText}>No calendars connected. Tap &quot;Add&quot; above.</Text>
             </View>
           )}
         </View>
@@ -840,7 +840,7 @@ export default function SettingsScreen() {
             </View>
             <View style={[styles.toolInfo, { flex: 1 }]}>
               <Text style={styles.toolName}>Color Theme</Text>
-              <Text style={styles.toolDesc}>Choose the app's visual style</Text>
+              <Text style={styles.toolDesc}>Choose the app&apos;s visual style</Text>
             </View>
           </View>
           <View style={{ flexDirection: "row", gap: 10, paddingHorizontal: 16, paddingBottom: 16 }}>
@@ -1016,7 +1016,7 @@ export default function SettingsScreen() {
             </View>
             <View style={[styles.toolInfo, { flex: 1 }]}>
               <Text style={styles.toolName}>Smart Input</Text>
-              <Text style={styles.toolDesc}>Parse dates, times, repeats from quick-add text; ask only what's missing</Text>
+              <Text style={styles.toolDesc}>Parse dates, times, repeats from quick-add text; ask only what&apos;s missing</Text>
             </View>
             <Switch
               value={smartInputEnabled}

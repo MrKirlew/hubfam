@@ -116,7 +116,7 @@ export default function GoogleTasksSettings() {
 
               {accountLists.length === 0 && (
                 <Text style={s.noListsText}>
-                  No task lists found. Tap "Sync Now" to import.
+                  No task lists found. Tap &quot;Sync Now&quot; to import.
                 </Text>
               )}
             </View>
@@ -127,7 +127,7 @@ export default function GoogleTasksSettings() {
           <View style={s.emptyRow}>
             <Ionicons name="cloud-download-outline" size={24} color={t.textFaint} />
             <Text style={s.emptyText}>
-              Tap "Sync Now" to import your Google Task lists
+              Tap &quot;Sync Now&quot; to import your Google Task lists
             </Text>
           </View>
         )}

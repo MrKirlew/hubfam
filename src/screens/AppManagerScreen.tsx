@@ -167,7 +167,7 @@ export default function AppManagerScreen() {
       setLoading(true);
       const result = await getInstalledApps(showSystem);
       setApps(result);
-    } catch (err) {
+    } catch {
       Alert.alert("Error", "Failed to load installed apps.");
     } finally {
       setLoading(false);

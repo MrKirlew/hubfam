@@ -48,7 +48,7 @@ export default function PairScreen() {
           onBarcodeScanned={onScanned}
         />
         <SafeAreaView style={styles.cameraOverlay}>
-          <Text style={styles.scanHint}>Point at the hub's pairing QR</Text>
+          <Text style={styles.scanHint}>Point at the hub&apos;s pairing QR</Text>
           <TouchableOpacity style={styles.cancelBtn} onPress={() => setScanning(false)}>
             <Text style={styles.cancelText}>Cancel</Text>
           </TouchableOpacity>
@@ -66,7 +66,7 @@ export default function PairScreen() {
     <SafeAreaView style={styles.root}>
       <View style={styles.body}>
         <Text style={styles.logo}>Family Hub Remote</Text>
-        <Text style={styles.lead}>Pair with your family's hub to send messages and lists to it — over WiFi, cellular, or Bluetooth.</Text>
+        <Text style={styles.lead}>Pair with your family&apos;s hub to send messages and lists to it — over WiFi, cellular, or Bluetooth.</Text>
         <Text style={styles.label}>Your name</Text>
         <TextInput
           style={styles.input}

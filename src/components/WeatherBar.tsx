@@ -122,6 +122,8 @@ export default function WeatherBar() {
       }
     }, 30 * 60 * 1000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+    // Mount-only: initLocation is recreated each render; re-running would duplicate the interval.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (!weather) {

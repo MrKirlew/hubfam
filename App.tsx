@@ -11,14 +11,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { StatusBar, AppState, AppStateStatus, LogBox } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-
-// Suppress sync warnings from appearing as yellow banners in dev builds
-LogBox.ignoreLogs([
-  "[GoogleSignin]",
-  "[GoogleTasks]",
-  "[Sync]",
-  "[Analytics]",
-]);
 import * as SplashScreen from "expo-splash-screen";
 import * as KeepAwake from "expo-keep-awake";
 
@@ -36,6 +28,14 @@ import { startErrorRecovery, stopErrorRecovery } from "./src/services/ErrorRecov
 import { startHubTransport, stopHubTransport } from "./src/services/HubTransportService";
 import { initHubDelivery, checkScheduledMessages } from "./src/services/HubMessageDelivery";
 import { maybeShowExactAlarmExplainer } from "./src/services/ExactAlarmService";
+
+// Suppress sync warnings from appearing as yellow banners in dev builds
+LogBox.ignoreLogs([
+  "[GoogleSignin]",
+  "[GoogleTasks]",
+  "[Sync]",
+  "[Analytics]",
+]);
 
 SplashScreen.preventAutoHideAsync();
 
@@ -292,6 +292,8 @@ export default function App() {
   useEffect(() => {
     if (!hasHydrated) return;
     setScreenBrightness(screenBrightnessVal).catch(() => {});
+    // Startup-only restore; later brightness changes are applied where the user edits them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasHydrated]);
 
   if (!appReady) return null;

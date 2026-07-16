@@ -30,7 +30,7 @@ export function encodeFrames(msgId: number, payload: Uint8Array, maxFrameBytes: 
 }
 
 interface Pending {
-  chunks: Array<Uint8Array | undefined>;
+  chunks: (Uint8Array | undefined)[];
   total: number;
   received: number;
 }

@@ -266,7 +266,7 @@ export default function ListsScreen() {
           <View style={s.emptyState}>
             <Ionicons name="list-outline" size={48} color={t.textFaint} />
             <Text style={s.emptyText}>No lists yet</Text>
-            <Text style={s.emptySubtext}>Tap "New List" to create one</Text>
+            <Text style={s.emptySubtext}>Tap &quot;New List&quot; to create one</Text>
           </View>
         )}
 

@@ -95,7 +95,6 @@ export default function DashboardScreen() {
     }
   };
 
-  const updateWidget = useAppStore(s => s.updateWidget);
   const setDashboardLayout = useAppStore(s => s.setDashboardLayout);
 
   const handleClosePanel = (index: number) => {
@@ -116,7 +115,7 @@ export default function DashboardScreen() {
   });
 
   const renderPanels = () => {
-    const { preset, widgets } = layout;
+    const { preset } = layout;
     const dir = isLandscape ? "row" : "column";
 
     if (preset === "1-panel") {

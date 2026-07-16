@@ -31,8 +31,8 @@ export default function WeatherSettings() {
   };
 
   const handleManualLocation = () => {
-    Alert.prompt
-      ? Alert.prompt("Set Location", "Enter city name (e.g. Miami, FL):", (text: string) => {
+    if (Alert.prompt) {
+      Alert.prompt("Set Location", "Enter city name (e.g. Miami, FL):", (text: string) => {
           if (!text?.trim()) return;
           fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(text.trim())}&count=1`)
             .then(r => r.json())
@@ -49,8 +49,10 @@ export default function WeatherSettings() {
               }
             })
             .catch(() => Alert.alert("Error", "Could not search location."));
-        })
-      : Alert.alert("Set Location", "Use the quick-add bar to set a city, or use 'My Location' above.");
+      });
+    } else {
+      Alert.alert("Set Location", "Use the quick-add bar to set a city, or use 'My Location' above.");
+    }
   };
 
   return (
