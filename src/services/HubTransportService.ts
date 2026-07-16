@@ -13,14 +13,18 @@ import {
   RelayClient,
   Outbox,
   Dedup,
+  SessionCrypto,
+  b64decode,
   type Envelope,
   type HubMessage,
   type ListOp,
   type RemoteCommand,
+  type SealedPayload,
 } from "@familyhub/shared";
 import { useAppStore } from "../store/appStore";
 import { asyncStorageKV } from "./kvAdapter";
 import { handleRemoteCommand } from "./RemoteCommandHandler";
+import { getCryptoProvider } from "./crypto";
 
 const RELAY_URL = process.env.EXPO_PUBLIC_RELAY_URL ?? "";
 const DEVICE_TOKEN_KEY = "familyhub_device_token";
@@ -28,18 +32,26 @@ const CURSOR_KEY = "familyhub_cloud_cursor";
 
 let router: TransportRouter | null = null;
 let cloud: CloudTransport | null = null;
+let contentSession: SessionCrypto | null = null;
 let cursor = 0;
 
-function routeInbound(env: Envelope): void {
+async function routeInbound(env: Envelope): Promise<void> {
   const store = useAppStore.getState();
-  // NOTE: payloads become AES-GCM sealed once the RN crypto provider lands
-  // (WS5b); until then they are treated as plaintext objects.
+  let payload: unknown = env.payload;
+  if (env.sealed) {
+    if (!contentSession) return; // can't open without the content key
+    try {
+      payload = await contentSession.openJson(env.payload as SealedPayload);
+    } catch {
+      return; // undecryptable — drop
+    }
+  }
   if (env.kind === "message") {
-    store.addHubMessage(env.payload as HubMessage);
+    store.addHubMessage(payload as HubMessage);
   } else if (env.kind === "list-op") {
-    store.applyHubListOp(env.payload as ListOp);
+    store.applyHubListOp(payload as ListOp);
   } else if (env.kind === "remote") {
-    handleRemoteCommand(env.payload as RemoteCommand);
+    handleRemoteCommand(payload as RemoteCommand);
   }
 }
 
@@ -57,6 +69,8 @@ export async function startHubTransport(): Promise<void> {
   }
 
   cursor = Number((await AsyncStorage.getItem(CURSOR_KEY)) || "0");
+  const contentKeyB64 = await SecureStore.getItemAsync("familyhub_content_key").catch(() => null);
+  if (contentKeyB64) contentSession = new SessionCrypto(getCryptoProvider(), b64decode(contentKeyB64));
   const relay = new RelayClient({ baseUrl: RELAY_URL, fetchFn: fetch as any, deviceToken });
 
   cloud = new CloudTransport({
@@ -90,4 +104,5 @@ export async function stopHubTransport(): Promise<void> {
   router?.dispose();
   router = null;
   cloud = null;
+  contentSession = null;
 }

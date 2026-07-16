@@ -1222,6 +1222,22 @@ export default function SettingsScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.toolRow, styles.rowBorder]}
+            onPress={() => navigation.navigate("Pairing")}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Family sharing"
+          >
+            <View style={styles.toolIcon}>
+              <Text style={styles.toolIconText}>📲</Text>
+            </View>
+            <View style={styles.toolInfo}>
+              <Text style={styles.toolName}>Family Sharing</Text>
+              <Text style={styles.toolDesc}>Pair phones to send messages &amp; lists to this hub</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={t.textFaint} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.toolRow, styles.rowBorder]}
             onPress={() => navigation.navigate("AppManager")}
             activeOpacity={0.7}
             accessibilityRole="button"
