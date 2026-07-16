@@ -2,7 +2,9 @@ module.exports = {
   preset: "ts-jest",
   testEnvironment: "node",
   moduleFileExtensions: ["ts", "tsx", "js", "jsx"],
-  testPathPattern: "src/__tests__/.*\\.test\\.ts$",
+  // Scope discovery to the hub app so sibling workspace packages
+  // (packages/shared, relay-worker) run under their own jest configs, not this one.
+  roots: ["<rootDir>/src"],
   transform: {
     "^.+\\.tsx?$": ["ts-jest", { tsconfig: "tsconfig.json" }],
   },
