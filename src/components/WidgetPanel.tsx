@@ -15,6 +15,7 @@ import CleaningWidget from "./widgets/CleaningWidget";
 import MonthCalendarWidget from "./widgets/MonthCalendarWidget";
 import TimerWidget from "./widgets/TimerWidget";
 import MessageBoardWidget from "./widgets/MessageBoardWidget";
+import SharedListsWidget from "./widgets/SharedListsWidget";
 
 interface Props {
   config: WidgetConfig;
@@ -57,6 +58,8 @@ export default function WidgetPanel({ config, onConfigure, onClose, compact: com
         return <TimerWidget compact={isCompact} />;
       case "message-board":
         return <MessageBoardWidget />;
+      case "shared-lists":
+        return <SharedListsWidget />;
       case "clock":
       default:
         return <ClockWidget compact={isCompact} />;

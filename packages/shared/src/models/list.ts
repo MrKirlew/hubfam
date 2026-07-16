@@ -29,6 +29,7 @@ export type ListOp =
   | { k: "add-item"; opId: string; listId: string; ts: number; deviceId: string; item: SharedListItem }
   | { k: "toggle-item"; opId: string; listId: string; ts: number; deviceId: string; itemId: string; done: boolean }
   | { k: "edit-item"; opId: string; listId: string; ts: number; deviceId: string; itemId: string; text: string }
-  | { k: "delete-item"; opId: string; listId: string; ts: number; deviceId: string; itemId: string };
+  | { k: "delete-item"; opId: string; listId: string; ts: number; deviceId: string; itemId: string }
+  | { k: "delete-list"; opId: string; listId: string; ts: number; deviceId: string };
 
 export type ListOpKind = ListOp["k"];

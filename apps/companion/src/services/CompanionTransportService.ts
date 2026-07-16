@@ -12,6 +12,8 @@ import {
   newId,
   type Envelope,
   type HubMessage,
+  type ListOp,
+  type SealedPayload,
 } from "@familyhub/shared";
 import { useCompanionStore } from "../store/companionStore";
 import { getCryptoProvider } from "./crypto";
@@ -65,6 +67,7 @@ export async function startCompanionTransport(): Promise<void> {
   await outbox.load();
   router = new TransportRouter({ cloud, outbox, dedup: new Dedup() });
   router.onStateChange((s) => useCompanionStore.getState().setConnection(s.effective));
+  router.subscribe((env) => void routeInbound(env));
   await cloud.connect();
   useCompanionStore.getState().setConnection(router.getState().effective);
 }
@@ -108,4 +111,35 @@ export async function sendMessage(text: string, opts: SendOpts = {}): Promise<vo
     now,
   );
   await router.send(env);
+}
+
+/** Inbound list ops from the hub / other phones → apply to our shared lists. */
+async function routeInbound(env: Envelope): Promise<void> {
+  if (env.kind !== "list-op") return;
+  let op: ListOp;
+  if (env.sealed) {
+    if (!session) return;
+    try {
+      op = await session.openJson<ListOp>(env.payload as SealedPayload);
+    } catch {
+      return;
+    }
+  } else {
+    op = env.payload as ListOp;
+  }
+  useCompanionStore.getState().applyListOp(op);
+}
+
+/** Apply a shared-list op locally (optimistic) and send it (sealed) to the household. */
+export async function sendListOp(op: ListOp): Promise<void> {
+  useCompanionStore.getState().applyListOp(op);
+  if (!router || !session) return; // not connected yet; local-only until reconnect
+  const now = Date.now();
+  const sealed = await session.sealJson(op);
+  const env: Envelope = makeEnvelope(
+    { household: householdId, from: deviceId, kind: "list-op", payload: sealed, sealed: true },
+    newId(),
+    now,
+  );
+  await router.send(env); // queues to the outbox if offline
 }

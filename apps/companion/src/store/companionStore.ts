@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { EffectiveLane, SharedList } from "@familyhub/shared";
+import { applyOp, type EffectiveLane, type SharedList, type ListOp } from "@familyhub/shared";
 
 interface CompanionState {
   paired: boolean;
@@ -16,6 +16,7 @@ interface CompanionState {
   setMemberName: (n: string) => void;
   setConnection: (c: EffectiveLane) => void;
   upsertSharedList: (l: SharedList) => void;
+  applyListOp: (op: ListOp) => void;
   reset: () => void;
 }
 
@@ -40,6 +41,7 @@ export const useCompanionStore = create<CompanionState>()(
           else lists.push(l);
           return { sharedLists: lists };
         }),
+      applyListOp: (op) => set((s) => ({ sharedLists: applyOp(s.sharedLists, op) })),
       reset: () => set({ paired: false, householdId: null, deviceId: null, sharedLists: [] }),
     }),
     {

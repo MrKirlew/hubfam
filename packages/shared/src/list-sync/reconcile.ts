@@ -64,6 +64,8 @@ export function applyOp(lists: SharedList[], op: ListOp): SharedList[] {
       return list ? updateItem(lists, idx, list, op.itemId, op.ts, (it) => ({ ...it, text: op.text })) : lists;
     case "delete-item":
       return list ? updateItem(lists, idx, list, op.itemId, op.ts, (it) => ({ ...it, deleted: true })) : lists;
+    case "delete-list":
+      return lists.filter((l) => l.id !== op.listId);
     default:
       return lists;
   }

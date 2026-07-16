@@ -174,7 +174,8 @@ export type WidgetType =
   | "month-calendar"
   | "timer"
   | "clock"
-  | "message-board";
+  | "message-board"
+  | "shared-lists";
 
 export interface WidgetConfig {
   id:        string;
