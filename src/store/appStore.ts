@@ -10,6 +10,8 @@ import { immer } from "zustand/middleware/immer";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { migrateIfNeeded } from "../services/PinService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import type { Household, PairedDevice, HubMessage, SharedList, ListOp } from "@familyhub/shared";
+import { applyOp } from "@familyhub/shared";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -171,7 +173,8 @@ export type WidgetType =
   | "cleaning"
   | "month-calendar"
   | "timer"
-  | "clock";
+  | "clock"
+  | "message-board";
 
 export interface WidgetConfig {
   id:        string;
@@ -226,6 +229,13 @@ interface AppState {
   dashboardLayout: DashboardLayout;
   alarms:          AlarmSchedule[];
   cleaningItems:   CleaningItem[];
+
+  // Companion messaging (WS5) — phone → hub messages + collaborative lists
+  household:          Household | null;
+  pairedDevices:      PairedDevice[];
+  hubMessages:        HubMessage[];
+  sharedLists:        SharedList[];
+  activeAlertMessage: HubMessage | null;   // transient — drives the full-screen alert overlay
 
   // Actions
   lock:               () => void;
@@ -289,6 +299,15 @@ interface AppState {
   removeAlarm:          (id: string) => void;
   updateWidget:         (index: number, widget: WidgetConfig) => void;
 
+  setHousehold:          (h: Household | null) => void;
+  addPairedDevice:       (d: PairedDevice) => void;
+  revokePairedDevice:    (id: string) => void;
+  addHubMessage:         (m: HubMessage) => void;
+  dismissHubMessage:     (id: string) => void;
+  setActiveAlertMessage: (m: HubMessage | null) => void;
+  upsertSharedList:      (l: SharedList) => void;
+  applyHubListOp:        (op: ListOp) => void;
+
   pendingTaskMutations: PendingTaskMutation[];
   addPendingMutation:   (m: PendingTaskMutation) => void;
   clearPendingMutation: (id: string) => void;
@@ -304,11 +323,23 @@ const SEED_EVENTS: CalendarEvent[] = [];
 
 const SEED_LISTS: TodoList[] = [];
 
+const SEED_HUB_MESSAGES: HubMessage[] = [
+  {
+    id: "welcome",
+    from: "hub",
+    kind: "note",
+    title: "Family Hub",
+    body: "Notes and lists your family sends from their phones will show up here.",
+    ts: Date.now(),
+    recipient: "all",
+  },
+];
+
 // ── Store ─────────────────────────────────────────────────────────────────────
 
 export const useAppStore = create<AppState>()(
   persist(
-    immer((set) => ({
+    immer((set, get) => ({
       _hasHydrated:  false,
       isLocked:      false,
       activeProfile: "all",
@@ -365,6 +396,12 @@ export const useAppStore = create<AppState>()(
           { id: "w1", type: "todo-list" },
         ],
       },
+
+      household:          null,
+      pairedDevices:      [],
+      hubMessages:        SEED_HUB_MESSAGES,
+      sharedLists:        [],
+      activeAlertMessage: null,
 
       lock:             () => set(s => { s.isLocked = true; s.activeProfile = "all"; }),
       unlock:           (profile) => set(s => { s.isLocked = false; s.activeProfile = profile; }),
@@ -496,6 +533,33 @@ export const useAppStore = create<AppState>()(
       }),
       removeAlarm: (id) => set(s => { s.alarms = s.alarms.filter(a => a.id !== id); }),
 
+      setHousehold:       (h) => set(s => { s.household = h; }),
+      addPairedDevice:    (d) => set(s => {
+        const i = s.pairedDevices.findIndex(x => x.id === d.id);
+        if (i !== -1) s.pairedDevices[i] = d; else s.pairedDevices.push(d);
+      }),
+      revokePairedDevice: (id) => set(s => {
+        const d = s.pairedDevices.find(x => x.id === id);
+        if (d) d.revokedAt = Date.now();
+      }),
+      addHubMessage:      (m) => set(s => {
+        if (s.hubMessages.some(x => x.id === m.id)) return; // idempotent (dedup already happens upstream)
+        s.hubMessages.unshift(m);
+        if (s.hubMessages.length > 50) s.hubMessages = s.hubMessages.slice(0, 50);
+        if (m.kind === "alert") s.activeAlertMessage = m;
+      }),
+      dismissHubMessage:  (id) => set(s => {
+        s.hubMessages = s.hubMessages.filter(x => x.id !== id);
+        if (s.activeAlertMessage && s.activeAlertMessage.id === id) s.activeAlertMessage = null;
+      }),
+      setActiveAlertMessage: (m) => set(s => { s.activeAlertMessage = m; }),
+      upsertSharedList:   (l) => set(s => {
+        const i = s.sharedLists.findIndex(x => x.id === l.id);
+        if (i !== -1) s.sharedLists[i] = l; else s.sharedLists.push(l);
+      }),
+      // Reconcile via the shared LWW op-log; compute on plain state to avoid mixing Immer drafts with the pure reducer.
+      applyHubListOp:     (op) => { const next = applyOp(get().sharedLists, op); set(s => { s.sharedLists = next; }); },
+
       pendingTaskMutations: [],
       addPendingMutation: (m) => set(s => { s.pendingTaskMutations.push(m); }),
       clearPendingMutation: (id) => set(s => {
@@ -505,7 +569,7 @@ export const useAppStore = create<AppState>()(
     {
       name:    "family-hub-store",
       storage: createJSONStorage(() => AsyncStorage),
-      version: 2,
+      version: 3,
       migrate: (persisted: any, fromVersion: number) => {
         if (!persisted || typeof persisted !== "object") return persisted;
         let next = persisted;
@@ -522,11 +586,23 @@ export const useAppStore = create<AppState>()(
           const { batteryAlertPercent: _drop, ...rest } = next;
           next = { ...rest, batteryAlertPercents: seeded };
         }
+        // v2 → v3: companion-messaging state (household, paired devices, hub
+        // messages, shared lists). Default any missing fields.
+        if (fromVersion < 3) {
+          next = {
+            ...next,
+            household: next.household ?? null,
+            pairedDevices: next.pairedDevices ?? [],
+            hubMessages: next.hubMessages ?? SEED_HUB_MESSAGES,
+            sharedLists: next.sharedLists ?? [],
+            activeAlertMessage: null,
+          };
+        }
         return next;
       },
       partialize: (state) => {
         const { _hasHydrated, ...rest } = state;
-        return { ...rest, isLocked: false, isSyncing: false }; // always start unlocked + sync unlocked
+        return { ...rest, isLocked: false, isSyncing: false, activeAlertMessage: null }; // always start unlocked + no stale alert
       },
       onRehydrateStorage: () => {
         return (state) => {
