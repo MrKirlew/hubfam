@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAppStore } from "../store/appStore";
 import { useTheme } from "../hooks/useTheme";
 import type { Theme } from "../theme";
+import { stopHubSound } from "../services/HubSound";
 
 /**
  * Full-screen override for "alert" messages sent from a phone — mirrors the
@@ -16,6 +17,7 @@ export default function AlertMessageOverlay() {
   const dismiss = useAppStore((st) => st.dismissHubMessage);
 
   const close = () => {
+    stopHubSound(); // dismissing the alert silences its beeps
     if (alert) dismiss(alert.id);
   };
 

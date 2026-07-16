@@ -37,6 +37,8 @@ export default function HomeScreen() {
   const memberName = useCompanionStore((s) => s.memberName);
   const [text, setText] = useState("");
   const [loud, setLoud] = useState(false);
+  const [vol, setVol] = useState(1); // hub sound volume 0–1
+  const [secs, setSecs] = useState(0); // 0 = play once
   const [sched, setSched] = useState<Sched>(null);
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
@@ -47,9 +49,17 @@ export default function HomeScreen() {
       setBusy(true);
       setSent(false);
       try {
-        await sendMessage(text.trim(), { kind, loud, scheduledFor: sched?.at ?? null });
+        await sendMessage(text.trim(), {
+          kind,
+          loud,
+          soundVolume: vol < 1 ? vol : undefined,
+          soundSeconds: secs > 0 ? secs : undefined,
+          scheduledFor: sched?.at ?? null,
+        });
         setText("");
         setLoud(false);
+        setVol(1);
+        setSecs(0);
         setSched(null);
         setSent(true);
         setTimeout(() => setSent(false), 2500);
@@ -59,7 +69,7 @@ export default function HomeScreen() {
         setBusy(false);
       }
     },
-    [text, loud, sched],
+    [text, loud, vol, secs, sched],
   );
 
   const dot = connection === "offline" ? "#f87171" : "#34d399";
@@ -92,6 +102,43 @@ export default function HomeScreen() {
         <View style={styles.optRow}>
           <Text style={styles.optLabel}>🔊 Make it loud (play a sound on the hub)</Text>
           <Switch value={loud} onValueChange={setLoud} />
+        </View>
+
+        <Text style={styles.optLabel}>Hub sound — volume (loud notes &amp; alerts)</Text>
+        <View style={styles.chips}>
+          {[0.25, 0.5, 0.75, 1].map((v) => (
+            <TouchableOpacity
+              key={v}
+              style={[styles.chip, vol === v && styles.chipActive]}
+              onPress={() => setVol(v)}
+              accessibilityRole="button"
+              accessibilityLabel={`Hub sound volume ${Math.round(v * 100)} percent`}
+              accessibilityState={{ selected: vol === v }}
+            >
+              <Text style={[styles.chipText, vol === v && styles.chipTextActive]}>{Math.round(v * 100)}%</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.optLabel}>Hub sound — beep for (until someone dismisses it)</Text>
+        <View style={styles.chips}>
+          {[
+            { label: "Once", s: 0 },
+            { label: "10s", s: 10 },
+            { label: "30s", s: 30 },
+            { label: "1 min", s: 60 },
+          ].map((o) => (
+            <TouchableOpacity
+              key={o.label}
+              style={[styles.chip, secs === o.s && styles.chipActive]}
+              onPress={() => setSecs(o.s)}
+              accessibilityRole="button"
+              accessibilityLabel={`Beep ${o.label}`}
+              accessibilityState={{ selected: secs === o.s }}
+            >
+              <Text style={[styles.chipText, secs === o.s && styles.chipTextActive]}>{o.label}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
         <Text style={styles.optLabel}>Schedule</Text>

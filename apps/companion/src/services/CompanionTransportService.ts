@@ -87,6 +87,10 @@ export async function stopCompanionTransport(): Promise<void> {
 export interface SendOpts {
   kind?: "note" | "alert";
   loud?: boolean;
+  /** Hub sound volume 0–1 (loud notes + alerts). */
+  soundVolume?: number;
+  /** Repeat the hub sound this many seconds; hub-side dismiss stops it early. */
+  soundSeconds?: number;
   scheduledFor?: number | null;
 }
 
@@ -102,6 +106,8 @@ export async function sendMessage(text: string, opts: SendOpts = {}): Promise<vo
     ts: now,
     recipient: "all",
     loud: opts.loud || undefined,
+    soundVolume: opts.soundVolume,
+    soundSeconds: opts.soundSeconds,
     scheduledFor: opts.scheduledFor ?? undefined,
   };
   const sealed = await session.sealJson(msg);
