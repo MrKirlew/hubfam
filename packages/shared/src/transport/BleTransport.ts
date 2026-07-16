@@ -25,7 +25,7 @@ export class BleTransport implements Transport {
   private readonly reassembler = new FrameReassembler();
   private readonly receiveCbs = new Set<(e: Envelope) => void>();
   private readonly stateCbs = new Set<(s: ConnState) => void>();
-  private readonly unsub: Array<() => void> = [];
+  private readonly unsub: (() => void)[] = [];
   private msgCounter = 0;
 
   constructor(private readonly opts: BleTransportOptions) {

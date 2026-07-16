@@ -14,8 +14,7 @@ import * as SecureStore from "expo-secure-store";
 import RNCalendarEvents from "react-native-calendar-events";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { googleApiFetch } from "./googleApiFetch";
-import { recordFailure } from "./ErrorRecoveryService";
-import { onAuthFailure, markResolved } from "./ErrorRecoveryService";
+import { recordFailure , onAuthFailure, markResolved } from "./ErrorRecoveryService";
 import { useAppStore } from "../store/appStore";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -170,13 +169,13 @@ async function getValidAccessToken(email: string): Promise<string> {
     try {
       const tokens = await GoogleSignin.getTokens();
       if (tokens.accessToken) return tokens.accessToken;
-    } catch (e) {
+    } catch {
       // SDK session might be stale, try silent sign in
       try {
         await GoogleSignin.signInSilently();
         const tokens = await GoogleSignin.getTokens();
         if (tokens.accessToken) return tokens.accessToken;
-      } catch (silentErr) {
+      } catch {
         // Fall back to manual refresh
       }
     }
@@ -204,7 +203,7 @@ export async function connectGoogleCalendar(): Promise<string> {
   // Sign out first so the account picker appears (lets the user choose any account).
   try {
     await GoogleSignin.signOut();
-  } catch (e) {
+  } catch {
     // Already signed out — fall through.
   }
 
@@ -225,12 +224,12 @@ export async function connectGoogleCalendar(): Promise<string> {
   if (!userInfo.serverAuthCode) {
     try {
       await GoogleSignin.revokeAccess();
-    } catch (e) {
+    } catch {
       // No active grant to revoke — fall through.
     }
     try {
       await GoogleSignin.signOut();
-    } catch (e) {
+    } catch {
       // Already signed out — fall through.
     }
     userInfo = await GoogleSignin.signIn();

@@ -79,7 +79,7 @@ export default {
         body: params.toString(),
       });
       data = await googleRes.json();
-    } catch (err) {
+    } catch {
       return json({ error: "upstream_unreachable" }, 502);
     }
 

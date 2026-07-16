@@ -30,7 +30,7 @@ export interface TransportRouterOptions {
 export class TransportRouter {
   private readonly receiveCbs = new Set<(e: Envelope) => void>();
   private readonly stateCbs = new Set<(s: RouterState) => void>();
-  private readonly unsubs: Array<() => void> = [];
+  private readonly unsubs: (() => void)[] = [];
 
   constructor(private readonly opts: TransportRouterOptions) {
     for (const t of this.transports()) {

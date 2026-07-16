@@ -55,7 +55,7 @@ export default function CalendarSubscriptionsScreen() {
     for (const email of googleAccounts) {
       try {
         result[email] = await fetchCalendarList(email);
-      } catch (err) {
+      } catch {
         result[email] = [];
       }
     }
@@ -65,6 +65,8 @@ export default function CalendarSubscriptionsScreen() {
 
   useEffect(() => {
     if (googleAccounts.length > 0) loadCalendars();
+    // Intentionally re-fetch only when the subscribed feed count changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feeds.length]);
 
   const handleUnsubscribe = (email: string, cal: GCalEntry) => {
@@ -258,7 +260,7 @@ export default function CalendarSubscriptionsScreen() {
             )}
 
             <Text style={s.hintText}>
-              You can find public calendar IDs in Google Calendar Settings under "Integrate calendar".
+              You can find public calendar IDs in Google Calendar Settings under &quot;Integrate calendar&quot;.
               Common ones: US Holidays, sports leagues, school calendars.
             </Text>
 

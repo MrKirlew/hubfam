@@ -48,7 +48,7 @@ export default function EventTicker() {
     );
     anim.start();
     return () => anim.stop();
-  }, [todayEvents.length]);
+  }, [todayEvents.length, scrollX]);
 
   if (todayEvents.length === 0) return null;
 

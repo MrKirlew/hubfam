@@ -13,7 +13,7 @@ function msg(id: string): Envelope {
 
 describe("RelayClient", () => {
   it("creates a household and trims a trailing slash from baseUrl", async () => {
-    const calls: Array<{ url: string; init: any }> = [];
+    const calls: { url: string; init: any }[] = [];
     const fetchFn: FetchLike = async (url, init) => {
       calls.push({ url, init });
       return res(200, { householdId: "h1", deviceId: "d1", deviceToken: "t1" });
