@@ -14,6 +14,7 @@ import {
   setupSharing,
   createPairingInvite,
   revokeDevice,
+  resetSharing,
 } from "../services/PairingService";
 
 export default function PairingScreen() {
@@ -61,6 +62,25 @@ export default function PairingScreen() {
       { text: "Cancel", style: "cancel" },
       { text: "Remove", style: "destructive", onPress: () => void revokeDevice(id).catch(() => {}) },
     ]);
+  }, []);
+
+  const onReset = useCallback(() => {
+    Alert.alert(
+      "Reset sharing?",
+      "This unpairs all phones and clears this hub's sharing setup. You'll set it up again and re-pair phones.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Reset",
+          style: "destructive",
+          onPress: async () => {
+            await resetSharing();
+            setInvite(null);
+            setSetup(false);
+          },
+        },
+      ],
+    );
   }, []);
 
   const companions = devices.filter((d) => d.role === "companion");
@@ -154,6 +174,9 @@ export default function PairingScreen() {
                 </View>
               ))
             )}
+            <TouchableOpacity style={s.resetBtn} onPress={onReset} accessibilityRole="button" accessibilityLabel="Reset sharing">
+              <Text style={s.resetText}>Reset sharing</Text>
+            </TouchableOpacity>
           </>
         )}
       </ScrollView>
@@ -226,5 +249,7 @@ function getStyles(t: Theme) {
     },
     deviceName: { flex: 1, color: t.text, fontSize: 15 },
     revoked: { color: t.textFaint, textDecorationLine: "line-through" },
+    resetBtn: { marginTop: 24, alignSelf: "center", paddingVertical: 10, paddingHorizontal: 20 },
+    resetText: { color: t.error, fontSize: 15, fontWeight: "600" },
   });
 }
