@@ -7,7 +7,7 @@
  */
 
 import { useAppStore } from "../store/appStore";
-import { syncAllFeeds, loadCachedEvents } from "./CalendarSyncService";
+import { syncAllFeeds, loadCachedEvents, saveCachedEvents } from "./CalendarSyncService";
 import { syncTasksForAllAccounts } from "./GoogleTasksService";
 import { onSyncFailure, markResolved } from "./ErrorRecoveryService";
 export { pushTaskChange } from "./GoogleTasksService";
@@ -51,8 +51,8 @@ export async function performSync(): Promise<void> {
 
     const [from, to] = getSyncRange();
     console.log("[Sync] Syncing calendar feeds...");
-    const syncedEvents = await syncAllFeeds(store.feeds, from, to);
-    console.log(`[Sync] Calendar: ${syncedEvents.length} events synced`);
+    const { events: syncedEvents, failedFeedIds } = await syncAllFeeds(store.feeds, from, to);
+    console.log(`[Sync] Calendar: ${syncedEvents.length} events synced, ${failedFeedIds.length} feed(s) failed`);
 
     // Check if another sync has superseded this one
     if (syncStartedAt !== thisSync) {
@@ -60,8 +60,10 @@ export async function performSync(): Promise<void> {
       return;
     }
 
-    // Snapshot manual events AFTER sync to catch any added during sync
-    const postManualEvents = useAppStore.getState().events.filter(e => e.source === "manual");
+    // Snapshot the store AFTER sync — this holds manual events added during the
+    // sync AND the prior synced events we may need to preserve for failed feeds.
+    const currentEvents = useAppStore.getState().events;
+    const postManualEvents = currentEvents.filter(e => e.source === "manual");
 
     // Merge: keep all unique manual events from both snapshots
     const manualMap = new Map<string, typeof preManualEvents[0]>();
@@ -69,7 +71,21 @@ export async function performSync(): Promise<void> {
     for (const e of postManualEvents) manualMap.set(e.id, e);
     const allManualEvents = Array.from(manualMap.values());
 
-    store.setEvents([...allManualEvents, ...syncedEvents]);
+    // Preserve previously-synced events for any feed that FAILED to fetch this
+    // round (e.g. a transient token/network error), so a hiccup never blanks a
+    // calendar off the hub. Feeds that succeeded with 0 events are NOT in
+    // failedFeedIds, so genuinely-empty calendars still clear correctly.
+    const preservedFromFailed = failedFeedIds.length
+      ? currentEvents.filter(e => e.source !== "manual" && failedFeedIds.includes(e.calendarId))
+      : [];
+    if (preservedFromFailed.length) {
+      console.log(`[Sync] Preserved ${preservedFromFailed.length} event(s) from ${failedFeedIds.length} failed feed(s)`);
+    }
+
+    const syncedAndPreserved = [...syncedEvents, ...preservedFromFailed];
+    store.setEvents([...allManualEvents, ...syncedAndPreserved]);
+    // Cache only the non-manual set for instant display on next startup.
+    await saveCachedEvents(syncedAndPreserved);
 
     // Sync Google Tasks for all connected accounts
     console.log("[Sync] Syncing Google Tasks...");

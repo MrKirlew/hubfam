@@ -10,6 +10,7 @@ import LayoutPicker from "../components/LayoutPicker";
 import QuickAddBar from "../components/QuickAddBar";
 import WeatherBar from "../components/WeatherBar";
 import EventTicker from "../components/EventTicker";
+import AlertMessageOverlay from "../components/AlertMessageOverlay";
 import { useTheme } from "../hooks/useTheme";
 import type { Theme } from "../theme";
 import { performSync } from "../services/SyncOrchestrator";
@@ -289,6 +290,9 @@ export default function DashboardScreen() {
       {/* Quick-add input bar (hidden when locked). Floats absolutely above the
           widget grid so the keyboard can lift it without shrinking the panels. */}
       {!isLocked && <QuickAddBar />}
+
+      {/* Full-screen override for "alert" messages sent from a phone */}
+      <AlertMessageOverlay />
 
       {/* Lock overlay — shows PIN entry on top of dashboard */}
       <Modal visible={isLocked} transparent animationType="fade">

@@ -33,6 +33,8 @@ import { performSync, loadCachedEventsOnStartup } from "./src/services/SyncOrche
 import { startAlarmChecker, stopAlarmChecker } from "./src/services/AlarmService";
 import { initAnalytics, trackAction } from "./src/services/AnalyticsService";
 import { startErrorRecovery, stopErrorRecovery } from "./src/services/ErrorRecoveryService";
+import { startHubTransport, stopHubTransport } from "./src/services/HubTransportService";
+import { initHubDelivery, checkScheduledMessages } from "./src/services/HubMessageDelivery";
 import { maybeShowExactAlarmExplainer } from "./src/services/ExactAlarmService";
 
 SplashScreen.preventAutoHideAsync();
@@ -175,11 +177,22 @@ export default function App() {
     startAlarmChecker();
     startErrorRecovery();
 
+    // Start the companion-messaging transport (idle until a phone is paired)
+    startHubTransport().catch((err: any) => {
+      console.error("[App] Failed to start hub transport:", err);
+    });
+
+    // Deliver scheduled messages + fire their sound/overlay when due
+    initHubDelivery();
+    const schedulerInterval = setInterval(checkScheduledMessages, 30 * 1000);
+
     return () => {
       clearInterval(interval);
+      clearInterval(schedulerInterval);
       subscription.remove();
       stopAlarmChecker();
       stopErrorRecovery();
+      stopHubTransport();
     };
   }, [hasHydrated]);
 

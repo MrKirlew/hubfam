@@ -1,0 +1,12 @@
+{
+  "name": "@familyhub/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Transport-agnostic core (models, framing, dedup, outbox, crypto, TransportRouter, list reconcile) shared by the FamilyHub hub app and the companion app.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "test": "jest",
+    "typecheck": "tsc --noEmit"
+  }
+}

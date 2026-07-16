@@ -1,0 +1,20 @@
+name = "familyhub-relay"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# One Durable Object instance per household coordinates that family's devices:
+# real-time WebSocket fan-out + authoritative SQLite log (ciphertext only).
+[[durable_objects.bindings]]
+name = "HOUSEHOLD"
+class_name = "HouseholdDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["HouseholdDO"]
+
+# Secrets (set via `wrangler secret put`, never committed):
+#   RELAY_SIGNING_KEY  — random key used to sign/verify pairing tokens
+#   EXPO_ACCESS_TOKEN  — (optional) Expo push access token for background nudges
+[observability]
+enabled = true
