@@ -81,17 +81,25 @@ export async function stopCompanionTransport(): Promise<void> {
   session = null;
 }
 
+export interface SendOpts {
+  kind?: "note" | "alert";
+  loud?: boolean;
+  scheduledFor?: number | null;
+}
+
 /** Send a message to the hub (sealed with the household content key). */
-export async function sendMessage(text: string, kind: "note" | "alert" = "note"): Promise<void> {
+export async function sendMessage(text: string, opts: SendOpts = {}): Promise<void> {
   if (!router || !session) throw new Error("Not connected yet.");
   const now = Date.now();
   const msg: HubMessage = {
     id: newId(),
     from: useCompanionStore.getState().memberName || deviceId,
-    kind,
+    kind: opts.kind ?? "note",
     body: text,
     ts: now,
     recipient: "all",
+    loud: opts.loud || undefined,
+    scheduledFor: opts.scheduledFor ?? undefined,
   };
   const sealed = await session.sealJson(msg);
   const env: Envelope = makeEnvelope(

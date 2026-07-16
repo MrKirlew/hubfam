@@ -25,6 +25,7 @@ import { useAppStore } from "../store/appStore";
 import { asyncStorageKV } from "./kvAdapter";
 import { handleRemoteCommand } from "./RemoteCommandHandler";
 import { getCryptoProvider } from "./crypto";
+import { deliverMessage } from "./HubMessageDelivery";
 
 const RELAY_URL = process.env.EXPO_PUBLIC_RELAY_URL ?? "";
 const DEVICE_TOKEN_KEY = "familyhub_device_token";
@@ -47,7 +48,7 @@ async function routeInbound(env: Envelope): Promise<void> {
     }
   }
   if (env.kind === "message") {
-    store.addHubMessage(payload as HubMessage);
+    deliverMessage(payload as HubMessage);
   } else if (env.kind === "list-op") {
     store.applyHubListOp(payload as ListOp);
   } else if (env.kind === "remote") {

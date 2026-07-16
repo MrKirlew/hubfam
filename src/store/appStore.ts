@@ -546,7 +546,7 @@ export const useAppStore = create<AppState>()(
         if (s.hubMessages.some(x => x.id === m.id)) return; // idempotent (dedup already happens upstream)
         s.hubMessages.unshift(m);
         if (s.hubMessages.length > 50) s.hubMessages = s.hubMessages.slice(0, 50);
-        if (m.kind === "alert") s.activeAlertMessage = m;
+        if (m.kind === "alert" && (m.scheduledFor == null || m.scheduledFor <= Date.now())) s.activeAlertMessage = m;
       }),
       dismissHubMessage:  (id) => set(s => {
         s.hubMessages = s.hubMessages.filter(x => x.id !== id);

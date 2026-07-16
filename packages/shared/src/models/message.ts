@@ -16,4 +16,8 @@ export interface HubMessage {
   color?: string;
   /** Epoch ms after which the message auto-expires from the board. */
   expiresAt?: number | null;
+  /** Play a sound on the hub when delivered (alerts always do; this makes a note loud too). */
+  loud?: boolean;
+  /** Epoch ms to deliver at; until then the message is held (hidden, no sound/overlay). */
+  scheduledFor?: number | null;
 }

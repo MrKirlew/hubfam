@@ -22,7 +22,9 @@ export default function MessageBoardWidget() {
   const messages = useAppStore((st) => st.hubMessages);
   const dismiss = useAppStore((st) => st.dismissHubMessage);
   const now = Date.now();
-  const visible = messages.filter((m) => !m.expiresAt || m.expiresAt > now);
+  const visible = messages.filter(
+    (m) => (!m.expiresAt || m.expiresAt > now) && (m.scheduledFor == null || m.scheduledFor <= now),
+  );
 
   if (visible.length === 0) {
     return (
