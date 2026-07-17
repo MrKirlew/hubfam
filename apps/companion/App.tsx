@@ -6,19 +6,25 @@ import { useCompanionStore } from "./src/store/companionStore";
 import PairScreen from "./src/screens/PairScreen";
 import HomeScreen from "./src/screens/HomeScreen";
 import ListsScreen from "./src/screens/ListsScreen";
+import RecipesScreen from "./src/screens/RecipesScreen";
 import { startCompanionTransport } from "./src/services/CompanionTransportService";
 
 function MainTabs() {
-  const [tab, setTab] = useState<"send" | "lists">("send");
+  const [tab, setTab] = useState<"send" | "lists" | "recipes">("send");
   return (
     <View style={styles.flex}>
-      <View style={styles.flex}>{tab === "send" ? <HomeScreen /> : <ListsScreen />}</View>
+      <View style={styles.flex}>
+        {tab === "send" ? <HomeScreen /> : tab === "lists" ? <ListsScreen /> : <RecipesScreen />}
+      </View>
       <SafeAreaView edges={["bottom"]} style={styles.tabbar}>
         <TouchableOpacity style={styles.tab} onPress={() => setTab("send")} accessibilityRole="button" accessibilityLabel="Send tab">
           <Text style={[styles.tabText, tab === "send" && styles.tabActive]}>✉️  Send</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.tab} onPress={() => setTab("lists")} accessibilityRole="button" accessibilityLabel="Lists tab">
           <Text style={[styles.tabText, tab === "lists" && styles.tabActive]}>📋  Lists</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.tab} onPress={() => setTab("recipes")} accessibilityRole="button" accessibilityLabel="Recipes tab">
+          <Text style={[styles.tabText, tab === "recipes" && styles.tabActive]}>🍽️  Recipes</Text>
         </TouchableOpacity>
       </SafeAreaView>
     </View>

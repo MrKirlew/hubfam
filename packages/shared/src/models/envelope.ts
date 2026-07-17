@@ -2,7 +2,7 @@ import type { SealedPayload } from "../crypto/session";
 
 export const ENVELOPE_VERSION = 1;
 
-export type EnvelopeKind = "message" | "list-op" | "remote" | "ack" | "handshake";
+export type EnvelopeKind = "message" | "list-op" | "remote" | "recipe" | "ack" | "handshake";
 
 /**
  * The unit of transfer on both lanes (cloud + BLE). `id` is the idempotency key

@@ -75,3 +75,4 @@ apps/companion/ios/
 
 # === Claude Code harness local state (plans, memory, scheduled tasks) ===
 .claude/
+coverage/

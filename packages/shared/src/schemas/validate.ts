@@ -6,7 +6,7 @@ import type { Envelope, EnvelopeKind } from "../models/envelope";
  * zero-dependency and identical across Node / Hermes / Workers.)
  */
 
-const KINDS: EnvelopeKind[] = ["message", "list-op", "remote", "ack", "handshake"];
+const KINDS: EnvelopeKind[] = ["message", "list-op", "remote", "recipe", "ack", "handshake"];
 
 export class EnvelopeParseError extends Error {
   constructor(msg: string) {

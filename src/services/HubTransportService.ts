@@ -15,9 +15,12 @@ import {
   Dedup,
   SessionCrypto,
   b64decode,
+  makeEnvelope,
+  newId,
   type Envelope,
   type HubMessage,
   type ListOp,
+  type Recipe,
   type RemoteCommand,
   type SealedPayload,
 } from "@familyhub/shared";
@@ -58,6 +61,8 @@ async function routeInbound(env: Envelope): Promise<void> {
     store.applyHubListOp(payload as ListOp);
   } else if (env.kind === "remote") {
     handleRemoteCommand(payload as RemoteCommand);
+  } else if (env.kind === "recipe") {
+    store.applyRecipe(payload as Recipe);
   }
 }
 
@@ -114,6 +119,27 @@ async function doStartHubTransport(): Promise<void> {
   router.subscribe(routeInbound);
   await cloud.connect();
   console.log("[HubTransport] Cloud lane connecting for household", household.id);
+}
+
+/**
+ * Save a recipe added/edited/deleted on the tablet: apply to the store first
+ * (recipes work even with sharing not set up), then broadcast to companions
+ * when the transport is up. Router-less sends are silently local-only.
+ */
+export async function saveRecipeFromHub(recipe: Recipe): Promise<void> {
+  const store = useAppStore.getState();
+  store.applyRecipe(recipe);
+  if (!router || !contentSession) return;
+  const household = store.household;
+  if (!household) return;
+  const hubDeviceId = store.pairedDevices.find((d) => d.role === "hub")?.id ?? "hub";
+  const sealed = await contentSession.sealJson(recipe);
+  const env = makeEnvelope(
+    { household: household.id, from: hubDeviceId, kind: "recipe", payload: sealed, sealed: true },
+    newId(),
+    Date.now(),
+  );
+  await router.send(env);
 }
 
 export async function stopHubTransport(): Promise<void> {
