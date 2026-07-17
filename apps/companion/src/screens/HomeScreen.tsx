@@ -1,10 +1,38 @@
 import React, { useState, useCallback } from "react";
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ActivityIndicator, Switch, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import type { MessageRepeat } from "@familyhub/shared";
 import { useCompanionStore } from "../store/companionStore";
 import { sendMessage } from "../services/CompanionTransportService";
 
 type Sched = { label: string; at: number } | null;
+
+const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** 12h fields → 24h {hh, mm}, or null when out of range / not a number. */
+function to24h(hour: string, minute: string, ampm: "AM" | "PM"): { hh: number; mm: number } | null {
+  const h = Number(hour);
+  const m = Number(minute);
+  if (!Number.isInteger(h) || !Number.isInteger(m) || h < 1 || h > 12 || m < 0 || m > 59) return null;
+  const hh = ampm === "PM" ? (h % 12) + 12 : h % 12;
+  return { hh, mm: m };
+}
+
+/** Epoch ms of the soonest future occurrence of hh:mm on one of `days` (local clock). */
+function nextOccurrence(days: number[], hh: number, mm: number): number {
+  const now = Date.now();
+  for (let ahead = 0; ahead <= 7; ahead++) {
+    const d = new Date(now + ahead * 86400e3);
+    d.setHours(hh, mm, 0, 0);
+    if (d.getTime() > now && days.includes(d.getDay())) return d.getTime();
+  }
+  return now; // unreachable with a non-empty days set
+}
+
+function dayList(days: number[]): string {
+  return days.length === 7 ? "day" : [...days].sort((a, b) => a - b).map((d) => DAY_NAMES[d]).join(", ");
+}
 
 function presets(): { label: string; at: number }[] {
   const now = Date.now();
@@ -41,40 +69,75 @@ export default function HomeScreen() {
   const [secs, setSecs] = useState(0); // 0 = play once
   const [sched, setSched] = useState<Sched>(null);
   const [busy, setBusy] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [sent, setSent] = useState<string | null>(null);
+
+  // Custom schedule: any time + any set of weekdays, one-shot or repeating weekly.
+  const [custom, setCustom] = useState(false);
+  const [days, setDays] = useState<number[]>([]);
+  const [hour, setHour] = useState("8");
+  const [minute, setMinute] = useState("00");
+  const [ampm, setAmpm] = useState<"AM" | "PM">("AM");
+  const [weekly, setWeekly] = useState(false);
+
+  const customTime = custom ? to24h(hour, minute, ampm) : null;
+  const customReady = custom && customTime != null && days.length > 0;
+
+  const toggleDay = (d: number) =>
+    setDays((cur) => (cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d]));
 
   const onSend = useCallback(
     async (kind: "note" | "alert") => {
       if (!text.trim()) return;
+      let scheduledFor: number | null = sched?.at ?? null;
+      let repeat: MessageRepeat | null = null;
+      if (custom) {
+        const t24 = to24h(hour, minute, ampm);
+        if (!t24) {
+          Alert.alert("Check the time", "Enter a time like 7:30 (hour 1–12, minutes 00–59).");
+          return;
+        }
+        if (days.length === 0) {
+          Alert.alert("Pick a day", "Choose at least one day of the week.");
+          return;
+        }
+        const time = `${String(t24.hh).padStart(2, "0")}:${String(t24.mm).padStart(2, "0")}`;
+        if (weekly) repeat = { days: [...days].sort((a, b) => a - b), time };
+        else scheduledFor = nextOccurrence(days, t24.hh, t24.mm);
+      }
+      const sentLabel = scheduledFor != null || repeat ? "Scheduled" : "Sent";
       setBusy(true);
-      setSent(false);
+      setSent(null);
       try {
         await sendMessage(text.trim(), {
           kind,
           loud,
           soundVolume: vol < 1 ? vol : undefined,
           soundSeconds: secs > 0 ? secs : undefined,
-          scheduledFor: sched?.at ?? null,
+          scheduledFor,
+          repeat,
         });
         setText("");
         setLoud(false);
         setVol(1);
         setSecs(0);
         setSched(null);
-        setSent(true);
-        setTimeout(() => setSent(false), 2500);
+        setCustom(false);
+        setDays([]);
+        setWeekly(false);
+        setSent(sentLabel);
+        setTimeout(() => setSent(null), 2500);
       } catch (e: any) {
         Alert.alert("Couldn't send", e?.message ?? String(e));
       } finally {
         setBusy(false);
       }
     },
-    [text, loud, vol, secs, sched],
+    [text, loud, vol, secs, sched, custom, days, hour, minute, ampm, weekly],
   );
 
   const dot = connection === "offline" ? "#f87171" : "#34d399";
   const label = connection === "ble" ? "Bluetooth" : connection === "cloud" ? "Online" : "Connecting…";
-  const disabled = busy || !text.trim();
+  const disabled = busy || !text.trim() || (custom && !customReady);
 
   return (
     <SafeAreaView style={styles.root}>
@@ -143,21 +206,108 @@ export default function HomeScreen() {
 
         <Text style={styles.optLabel}>Schedule</Text>
         <View style={styles.chips}>
-          <TouchableOpacity style={[styles.chip, !sched && styles.chipActive]} onPress={() => setSched(null)}>
-            <Text style={[styles.chipText, !sched && styles.chipTextActive]}>Now</Text>
+          <TouchableOpacity
+            style={[styles.chip, !sched && !custom && styles.chipActive]}
+            onPress={() => {
+              setSched(null);
+              setCustom(false);
+            }}
+          >
+            <Text style={[styles.chipText, !sched && !custom && styles.chipTextActive]}>Now</Text>
           </TouchableOpacity>
           {presets().map((p) => (
             <TouchableOpacity
               key={p.label}
-              style={[styles.chip, sched?.label === p.label && styles.chipActive]}
-              onPress={() => setSched(p)}
+              style={[styles.chip, !custom && sched?.label === p.label && styles.chipActive]}
+              onPress={() => {
+                setSched(p);
+                setCustom(false);
+              }}
             >
-              <Text style={[styles.chipText, sched?.label === p.label && styles.chipTextActive]}>{p.label}</Text>
+              <Text style={[styles.chipText, !custom && sched?.label === p.label && styles.chipTextActive]}>{p.label}</Text>
             </TouchableOpacity>
           ))}
+          <TouchableOpacity
+            style={[styles.chip, custom && styles.chipActive]}
+            onPress={() => {
+              setCustom(true);
+              setSched(null);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Custom schedule"
+            accessibilityState={{ selected: custom }}
+          >
+            <Text style={[styles.chipText, custom && styles.chipTextActive]}>Custom…</Text>
+          </TouchableOpacity>
         </View>
-        {sched && <Text style={styles.schedNote}>Will deliver {fmt(sched.at)}</Text>}
-        {sent && <Text style={styles.sentMsg}>✓ {sched ? "Scheduled" : "Sent"} to the hub</Text>}
+
+        {custom && (
+          <View style={styles.customPanel}>
+            <Text style={styles.optLabel}>Days of the week</Text>
+            <View style={styles.chips}>
+              {DAY_LETTERS.map((letter, d) => (
+                <TouchableOpacity
+                  key={d}
+                  style={[styles.dayChip, days.includes(d) && styles.chipActive]}
+                  onPress={() => toggleDay(d)}
+                  accessibilityRole="checkbox"
+                  accessibilityLabel={DAY_NAMES[d]}
+                  accessibilityState={{ checked: days.includes(d) }}
+                >
+                  <Text style={[styles.chipText, days.includes(d) && styles.chipTextActive]}>{letter}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.optLabel}>Time</Text>
+            <View style={styles.timeRow}>
+              <TextInput
+                style={styles.timeInput}
+                value={hour}
+                onChangeText={setHour}
+                keyboardType="number-pad"
+                maxLength={2}
+                accessibilityLabel="Hour"
+              />
+              <Text style={styles.timeColon}>:</Text>
+              <TextInput
+                style={styles.timeInput}
+                value={minute}
+                onChangeText={setMinute}
+                keyboardType="number-pad"
+                maxLength={2}
+                accessibilityLabel="Minutes"
+              />
+              {(["AM", "PM"] as const).map((half) => (
+                <TouchableOpacity
+                  key={half}
+                  style={[styles.chip, ampm === half && styles.chipActive]}
+                  onPress={() => setAmpm(half)}
+                  accessibilityRole="button"
+                  accessibilityLabel={half}
+                  accessibilityState={{ selected: ampm === half }}
+                >
+                  <Text style={[styles.chipText, ampm === half && styles.chipTextActive]}>{half}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.optRow}>
+              <Text style={styles.optLabel}>↻ Repeat every week</Text>
+              <Switch value={weekly} onValueChange={setWeekly} />
+            </View>
+          </View>
+        )}
+
+        {custom && customReady && (
+          <Text style={styles.schedNote}>
+            {weekly
+              ? `Repeats every ${dayList(days)} at ${hour}:${minute.padStart(2, "0")} ${ampm} until dismissed on the hub`
+              : `Will deliver ${fmt(nextOccurrence(days, customTime!.hh, customTime!.mm))}`}
+          </Text>
+        )}
+        {!custom && sched && <Text style={styles.schedNote}>Will deliver {fmt(sched.at)}</Text>}
+        {sent && <Text style={styles.sentMsg}>✓ {sent} to the hub</Text>}
 
         <View style={styles.row}>
           <TouchableOpacity
@@ -167,7 +317,7 @@ export default function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel="Send note"
           >
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>{sched ? "Schedule note" : "Send note"}</Text>}
+            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>{sched || custom ? "Schedule note" : "Send note"}</Text>}
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.alertBtn, disabled && styles.disabled]}
@@ -176,7 +326,7 @@ export default function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel="Send alert"
           >
-            <Text style={styles.btnText}>{sched ? "Schedule alert" : "Send alert"}</Text>
+            <Text style={styles.btnText}>{sched || custom ? "Schedule alert" : "Send alert"}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -226,6 +376,38 @@ const styles = StyleSheet.create({
   chipText: { color: "rgba(232,238,255,.7)", fontSize: 14, fontWeight: "600" },
   chipTextActive: { color: "#fff" },
   schedNote: { color: "#60a5fa", fontSize: 13 },
+  customPanel: {
+    backgroundColor: "rgba(255,255,255,.04)",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,.08)",
+    padding: 14,
+    gap: 12,
+  },
+  dayChip: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,.12)",
+    backgroundColor: "rgba(255,255,255,.05)",
+  },
+  timeRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  timeInput: {
+    backgroundColor: "rgba(255,255,255,.06)",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,.08)",
+    color: "#e8eeff",
+    fontSize: 17,
+    fontWeight: "600",
+    width: 56,
+    textAlign: "center",
+    paddingVertical: 10,
+  },
+  timeColon: { color: "#e8eeff", fontSize: 18, fontWeight: "700" },
   sentMsg: { color: "#34d399", fontSize: 14, fontWeight: "600" },
   row: { flexDirection: "row", gap: 12, marginTop: 4 },
   primaryBtn: { flex: 1, backgroundColor: "#60a5fa", borderRadius: 14, paddingVertical: 15, alignItems: "center" },
