@@ -557,7 +557,8 @@ export const useAppStore = create<AppState>()(
         if (s.dismissedHubMessageIds.includes(m.id)) return; // tombstoned — a relay replay must not resurrect it
         s.hubMessages.unshift(m);
         if (s.hubMessages.length > 50) s.hubMessages = s.hubMessages.slice(0, 50);
-        if (m.kind === "alert" && (m.scheduledFor == null || m.scheduledFor <= Date.now())) s.activeAlertMessage = m;
+        // Weekly-repeat alerts only raise the overlay at their scheduled occurrences (HubMessageDelivery tick).
+        if (m.kind === "alert" && !m.repeat && (m.scheduledFor == null || m.scheduledFor <= Date.now())) s.activeAlertMessage = m;
       }),
       dismissHubMessage:  (id) => set(s => {
         s.hubMessages = s.hubMessages.filter(x => x.id !== id);

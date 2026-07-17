@@ -1,4 +1,4 @@
-import { deliverMessage, checkScheduledMessages } from "../services/HubMessageDelivery";
+import { deliverMessage, checkScheduledMessages, initHubDelivery } from "../services/HubMessageDelivery";
 import { playHubSound } from "../services/HubSound";
 import type { HubMessage } from "@familyhub/shared";
 
@@ -68,5 +68,76 @@ describe("HubMessageDelivery sound options", () => {
 
     checkScheduledMessages(); // fire-once
     expect(playHubSound).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("weekly-repeat messages", () => {
+  // Pin "now" so day/time math is deterministic: Wed 2026-07-15 19:30:10 local.
+  const WED_1930 = new Date(2026, 6, 15, 19, 30, 10).getTime();
+  let nowSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    nowSpy = jest.spyOn(Date, "now").mockReturnValue(WED_1930);
+  });
+  afterEach(() => {
+    nowSpy.mockRestore();
+  });
+
+  const repeatMsg = (over: Partial<HubMessage> = {}) =>
+    msg({ loud: true, repeat: { days: [3, 6], time: "19:30" }, ...over }); // Wed + Sat
+
+  it("does not fire on arrival, even inside the scheduled window", () => {
+    deliverMessage(repeatMsg());
+    expect(playHubSound).not.toHaveBeenCalled();
+  });
+
+  it("fires on the tick inside the window on a scheduled day, once per occurrence", () => {
+    hubMessages = [repeatMsg()];
+    checkScheduledMessages();
+    expect(playHubSound).toHaveBeenCalledTimes(1);
+    checkScheduledMessages(); // same occurrence — no re-fire
+    expect(playHubSound).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fire on a day that isn't scheduled", () => {
+    hubMessages = [repeatMsg({ repeat: { days: [5], time: "19:30" } })]; // Friday only
+    checkScheduledMessages();
+    expect(playHubSound).not.toHaveBeenCalled();
+  });
+
+  it("does not fire outside the time window", () => {
+    hubMessages = [repeatMsg({ repeat: { days: [3], time: "21:00" } })]; // later today
+    checkScheduledMessages();
+    expect(playHubSound).not.toHaveBeenCalled();
+  });
+
+  it("fires again on the next scheduled day (new occurrence key)", () => {
+    hubMessages = [repeatMsg()];
+    checkScheduledMessages();
+    expect(playHubSound).toHaveBeenCalledTimes(1);
+    // Saturday 19:30:10 — the other scheduled day.
+    nowSpy.mockReturnValue(new Date(2026, 6, 18, 19, 30, 10).getTime());
+    checkScheduledMessages();
+    expect(playHubSound).toHaveBeenCalledTimes(2);
+  });
+
+  it("repeat alert raises the overlay at the occurrence", () => {
+    hubMessages = [repeatMsg({ kind: "alert", loud: undefined })];
+    checkScheduledMessages();
+    expect(setActiveAlertMessage).toHaveBeenCalled();
+    expect(playHubSound).toHaveBeenCalledWith("alert", { volume: undefined, seconds: undefined });
+  });
+
+  it("initHubDelivery seeds today's past occurrence so a hub restart doesn't replay it", () => {
+    hubMessages = [repeatMsg()];
+    initHubDelivery();
+    checkScheduledMessages();
+    expect(playHubSound).not.toHaveBeenCalled();
+  });
+
+  it("ignores a malformed repeat time", () => {
+    hubMessages = [repeatMsg({ repeat: { days: [3], time: "25:99" } })];
+    checkScheduledMessages();
+    expect(playHubSound).not.toHaveBeenCalled();
   });
 });

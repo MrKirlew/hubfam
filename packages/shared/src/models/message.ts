@@ -3,6 +3,17 @@ export type HubMessageKind = "note" | "alert" | "sticky";
 /** "all" broadcasts to the hub board; otherwise a target deviceId or memberId. */
 export type MessageRecipient = "all" | string;
 
+/**
+ * Weekly repeat schedule for a message: fire at `time` (24h "HH:mm", hub-local
+ * clock) on each day in `days` (JS getDay numbering, 0 = Sunday). The message
+ * stays on the board and re-fires its sound/alert each occurrence until
+ * someone dismisses it on the hub, which ends the recurrence.
+ */
+export interface MessageRepeat {
+  days: number[];
+  time: string;
+}
+
 export interface HubMessage {
   id: string;
   /** Sender device id. */
@@ -24,4 +35,6 @@ export interface HubMessage {
   soundSeconds?: number;
   /** Epoch ms to deliver at; until then the message is held (hidden, no sound/overlay). */
   scheduledFor?: number | null;
+  /** Weekly repeat: fire at repeat.time on each repeat.days weekday until dismissed. */
+  repeat?: MessageRepeat | null;
 }

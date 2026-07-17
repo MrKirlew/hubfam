@@ -6,6 +6,18 @@ import { useTheme } from "../../hooks/useTheme";
 import type { Theme } from "../../theme";
 import { stopHubSound } from "../../services/HubSound";
 
+const DAY_ABBREV = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** "every Mon, Wed, Fri at 7:30 PM" — dismissing the message ends the schedule. */
+function repeatLabel(days: number[], time: string): string {
+  const names =
+    days.length === 7 ? "day" : [...days].sort((a, b) => a - b).map((d) => DAY_ABBREV[d] ?? "?").join(", ");
+  const [hh, mm] = time.split(":").map(Number);
+  const ampm = hh >= 12 ? "PM" : "AM";
+  const h12 = hh % 12 || 12;
+  return `every ${names} at ${h12}:${String(mm).padStart(2, "0")} ${ampm}`;
+}
+
 function timeAgo(ts: number, now: number): string {
   const s = Math.max(0, Math.floor((now - ts) / 1000));
   if (s < 60) return "just now";
@@ -68,6 +80,7 @@ export default function MessageBoardWidget() {
             </TouchableOpacity>
           </View>
           <Text style={s.body}>{m.body}</Text>
+          {m.repeat && <Text style={s.repeat}>↻ {repeatLabel(m.repeat.days, m.repeat.time)}</Text>}
           <Text style={s.meta}>
             {m.from === "hub" ? "Family Hub" : m.from} · {timeAgo(m.ts, now)}
           </Text>
@@ -92,6 +105,7 @@ function getStyles(t: Theme) {
     cardHeader: { flexDirection: "row", alignItems: "center", marginBottom: 4 },
     title: { flex: 1, color: t.text, fontSize: 15, fontWeight: "700" },
     body: { color: t.textSub, fontSize: 14, lineHeight: 19 },
+    repeat: { color: t.accent, fontSize: 12, fontWeight: "600", marginTop: 5 },
     meta: { color: t.textFaint, fontSize: 11, marginTop: 6 },
     empty: { flex: 1, alignItems: "center", justifyContent: "center", padding: 16 },
     emptyText: { color: t.textSub, fontSize: 15, fontWeight: "600", marginTop: 8 },

@@ -13,6 +13,7 @@ import {
   type Envelope,
   type HubMessage,
   type ListOp,
+  type MessageRepeat,
   type Recipe,
   type SealedPayload,
 } from "@familyhub/shared";
@@ -93,6 +94,8 @@ export interface SendOpts {
   /** Repeat the hub sound this many seconds; hub-side dismiss stops it early. */
   soundSeconds?: number;
   scheduledFor?: number | null;
+  /** Weekly repeat: fire at repeat.time (24h "HH:mm") on each repeat.days weekday until dismissed on the hub. */
+  repeat?: MessageRepeat | null;
 }
 
 /** Send a message to the hub (sealed with the household content key). */
@@ -110,6 +113,7 @@ export async function sendMessage(text: string, opts: SendOpts = {}): Promise<vo
     soundVolume: opts.soundVolume,
     soundSeconds: opts.soundSeconds,
     scheduledFor: opts.scheduledFor ?? undefined,
+    repeat: opts.repeat ?? undefined,
   };
   const sealed = await session.sealJson(msg);
   const env: Envelope = makeEnvelope(
