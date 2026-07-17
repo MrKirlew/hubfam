@@ -16,6 +16,7 @@ import MonthCalendarWidget from "./widgets/MonthCalendarWidget";
 import TimerWidget from "./widgets/TimerWidget";
 import MessageBoardWidget from "./widgets/MessageBoardWidget";
 import SharedListsWidget from "./widgets/SharedListsWidget";
+import RecipesWidget from "./widgets/RecipesWidget";
 
 interface Props {
   config: WidgetConfig;
@@ -60,6 +61,8 @@ export default function WidgetPanel({ config, onConfigure, onClose, compact: com
         return <MessageBoardWidget />;
       case "shared-lists":
         return <SharedListsWidget />;
+      case "recipes":
+        return <RecipesWidget />;
       case "clock":
       default:
         return <ClockWidget compact={isCompact} />;

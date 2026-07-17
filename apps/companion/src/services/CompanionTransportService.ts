@@ -13,6 +13,7 @@ import {
   type Envelope,
   type HubMessage,
   type ListOp,
+  type Recipe,
   type SealedPayload,
 } from "@familyhub/shared";
 import { useCompanionStore } from "../store/companionStore";
@@ -119,21 +120,36 @@ export async function sendMessage(text: string, opts: SendOpts = {}): Promise<vo
   await router.send(env);
 }
 
-/** Inbound list ops from the hub / other phones → apply to our shared lists. */
+/** Inbound list ops + recipes from the hub / other phones → apply to our store. */
 async function routeInbound(env: Envelope): Promise<void> {
-  if (env.kind !== "list-op") return;
-  let op: ListOp;
+  if (env.kind !== "list-op" && env.kind !== "recipe") return;
+  let payload: unknown;
   if (env.sealed) {
     if (!session) return;
     try {
-      op = await session.openJson<ListOp>(env.payload as SealedPayload);
+      payload = await session.openJson(env.payload as SealedPayload);
     } catch {
       return;
     }
   } else {
-    op = env.payload as ListOp;
+    payload = env.payload;
   }
-  useCompanionStore.getState().applyListOp(op);
+  const st = useCompanionStore.getState();
+  if (env.kind === "list-op") st.applyListOp(payload as ListOp);
+  else st.applyRecipe(payload as Recipe);
+}
+
+/** Apply a recipe upsert locally (optimistic) and send it (sealed) to the household. */
+export async function sendRecipe(recipe: Recipe): Promise<void> {
+  useCompanionStore.getState().applyRecipe(recipe);
+  if (!router || !session) return; // not connected yet; local-only until reconnect
+  const sealed = await session.sealJson(recipe);
+  const env: Envelope = makeEnvelope(
+    { household: householdId, from: deviceId, kind: "recipe", payload: sealed, sealed: true },
+    newId(),
+    Date.now(),
+  );
+  await router.send(env); // queues to the outbox if offline
 }
 
 /** Apply a shared-list op locally (optimistic) and send it (sealed) to the household. */

@@ -279,7 +279,9 @@ export class HouseholdDO extends DurableObject<Env> {
     if (env.kind === "list-op") {
       const seq = this.persistListOp(env, env.listId || "", env.from || "");
       if (seq !== null) this.fanout(JSON.stringify({ ...env, seq }), this.senderIdOf(ws));
-    } else if (env.kind === "message") {
+    } else if (env.kind === "message" || env.kind === "recipe") {
+      // Recipes ride the messages table: it stores the envelope's real `kind`,
+      // and /state replays rows by seq for clients to re-dispatch by kind.
       const seq = this.persistMessage(env);
       if (seq !== null) this.fanout(JSON.stringify({ ...env, seq }), this.senderIdOf(ws));
     } else {

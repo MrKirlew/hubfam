@@ -11,21 +11,33 @@
       "backgroundColor": "#080c18"
     },
     "android": {
-      "package": "com.familyhub.companion"
+      "package": "com.familyhub.companion",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "ios": {
-      "bundleIdentifier": "com.familyhub.companion",
-      "supportsTablet": true
+      "bundleIdentifier": "com.levarkirlew.familyhub.companion",
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "plugins": [
       "expo-secure-store",
       [
         "expo-camera",
-        { "cameraPermission": "Family Hub Remote uses the camera to scan the hub's pairing QR code." }
+        {
+          "cameraPermission": "Family Hub Remote uses the camera to scan the hub's pairing QR code."
+        }
       ]
     ],
     "extra": {
-      "eas": { "projectId": "" }
-    }
+      "eas": {
+        "projectId": "f87cbe20-ae70-49bd-8651-99b85ce2b67a"
+      }
+    },
+    "owner": "mrkirlew"
   }
 }

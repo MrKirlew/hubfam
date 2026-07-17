@@ -10,8 +10,8 @@ import { immer } from "zustand/middleware/immer";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { migrateIfNeeded } from "../services/PinService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { Household, PairedDevice, HubMessage, SharedList, ListOp } from "@familyhub/shared";
-import { applyOp } from "@familyhub/shared";
+import type { Household, PairedDevice, HubMessage, SharedList, ListOp, Recipe } from "@familyhub/shared";
+import { applyOp, upsertRecipe } from "@familyhub/shared";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -175,7 +175,8 @@ export type WidgetType =
   | "timer"
   | "clock"
   | "message-board"
-  | "shared-lists";
+  | "shared-lists"
+  | "recipes";
 
 export interface WidgetConfig {
   id:        string;
@@ -238,6 +239,8 @@ interface AppState {
   /** Ids the user dismissed — kept (bounded) so a relay replay can't resurrect them. */
   dismissedHubMessageIds: string[];
   sharedLists:        SharedList[];
+  /** Household recipes (incl. tombstones — filter `deleted` for display). */
+  recipes:            Recipe[];
   activeAlertMessage: HubMessage | null;   // transient — drives the full-screen alert overlay
 
   // Actions
@@ -310,6 +313,7 @@ interface AppState {
   setActiveAlertMessage: (m: HubMessage | null) => void;
   upsertSharedList:      (l: SharedList) => void;
   applyHubListOp:        (op: ListOp) => void;
+  applyRecipe:           (r: Recipe) => void;
   clearSharing:          () => void;
 
   pendingTaskMutations: PendingTaskMutation[];
@@ -406,6 +410,7 @@ export const useAppStore = create<AppState>()(
       hubMessages:        SEED_HUB_MESSAGES,
       dismissedHubMessageIds: [],
       sharedLists:        [],
+      recipes:            [],
       activeAlertMessage: null,
 
       lock:             () => set(s => { s.isLocked = true; s.activeProfile = "all"; }),
@@ -567,6 +572,8 @@ export const useAppStore = create<AppState>()(
       }),
       // Reconcile via the shared LWW op-log; compute on plain state to avoid mixing Immer drafts with the pure reducer.
       applyHubListOp:     (op) => { const next = applyOp(get().sharedLists, op); set(s => { s.sharedLists = next; }); },
+      // LWW upsert via the shared helper; computed on plain state like applyHubListOp.
+      applyRecipe:        (r) => { const next = upsertRecipe(get().recipes, r); set(s => { s.recipes = next; }); },
       clearSharing:       () => set(s => { s.household = null; s.pairedDevices = []; s.sharedLists = []; s.activeAlertMessage = null; s.dismissedHubMessageIds = []; }),
 
       pendingTaskMutations: [],
@@ -578,7 +585,7 @@ export const useAppStore = create<AppState>()(
     {
       name:    "family-hub-store",
       storage: createJSONStorage(() => AsyncStorage),
-      version: 3,
+      version: 4,
       migrate: (persisted: any, fromVersion: number) => {
         if (!persisted || typeof persisted !== "object") return persisted;
         let next = persisted;
@@ -606,6 +613,10 @@ export const useAppStore = create<AppState>()(
             sharedLists: next.sharedLists ?? [],
             activeAlertMessage: null,
           };
+        }
+        // v3 → v4: household recipes.
+        if (fromVersion < 4) {
+          next = { ...next, recipes: next.recipes ?? [] };
         }
         return next;
       },

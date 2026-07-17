@@ -19,6 +19,7 @@ const WIDGET_OPTIONS: { type: WidgetType; label: string; icon: string; desc: str
   { type: "clock",             label: "Clock",             icon: "time-outline",      desc: "Clock, date, and greeting" },
   { type: "message-board",     label: "Message Board",     icon: "chatbubbles-outline", desc: "Notes & lists sent from phones" },
   { type: "shared-lists",      label: "Shared Lists",      icon: "people-outline",     desc: "Collaborative lists from phones" },
+  { type: "recipes",           label: "Recipes",           icon: "restaurant-outline", desc: "Household recipe book with ingredients" },
 ];
 
 interface Props {

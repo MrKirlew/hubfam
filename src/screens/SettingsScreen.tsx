@@ -1222,6 +1222,22 @@ export default function SettingsScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.toolRow, styles.rowBorder]}
+            onPress={() => navigation.navigate("Recipes")}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Recipes"
+          >
+            <View style={styles.toolIcon}>
+              <Text style={styles.toolIconText}>🍽️</Text>
+            </View>
+            <View style={styles.toolInfo}>
+              <Text style={styles.toolName}>Recipes</Text>
+              <Text style={styles.toolDesc}>Household recipe book — ingredients &amp; how many it feeds</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={t.textFaint} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.toolRow, styles.rowBorder]}
             onPress={() => navigation.navigate("Pairing")}
             activeOpacity={0.7}
             accessibilityRole="button"

@@ -10,6 +10,7 @@ import CalendarScreen              from "../screens/CalendarScreen";
 import ListsScreen                 from "../screens/ListsScreen";
 import AlarmScheduleScreen         from "../screens/AlarmScheduleScreen";
 import PairingScreen               from "../screens/PairingScreen";
+import RecipesScreen               from "../screens/RecipesScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -27,6 +28,7 @@ export default function AppNavigator() {
         <Stack.Screen name="CalendarSubscriptions"   component={CalendarSubscriptionsScreen}  options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="AlarmSchedule"           component={AlarmScheduleScreen}          options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="Pairing"                 component={PairingScreen}                options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="Recipes"                 component={RecipesScreen}                options={{ animation: "slide_from_right" }} />
       </Stack.Navigator>
     </NavigationContainer>
   );

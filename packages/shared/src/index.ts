@@ -4,6 +4,7 @@ export * from "./models/household";
 export * from "./models/message";
 export * from "./models/list";
 export * from "./models/remote";
+export * from "./models/recipe";
 
 // Validation
 export * from "./schemas/validate";
