@@ -10,6 +10,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   TransportRouter,
   CloudTransport,
+  BleTransport,
   RelayClient,
   Outbox,
   Dedup,
@@ -29,6 +30,9 @@ import { asyncStorageKV } from "./kvAdapter";
 import { handleRemoteCommand } from "./RemoteCommandHandler";
 import { getCryptoProvider } from "./crypto";
 import { deliverMessage } from "./HubMessageDelivery";
+import { createHubBleLink } from "./BlePeripheralLink";
+
+const BLE_SECRET_KEY = "familyhub_ble_secret";
 
 const RELAY_URL = process.env.EXPO_PUBLIC_RELAY_URL ?? "";
 const DEVICE_TOKEN_KEY = "familyhub_device_token";
@@ -41,6 +45,7 @@ const cursorKeyFor = (householdId: string) => `${CURSOR_KEY_PREFIX}_${householdI
 
 let router: TransportRouter | null = null;
 let cloud: CloudTransport | null = null;
+let ble: BleTransport | null = null;
 let contentSession: SessionCrypto | null = null;
 let cursor = 0;
 
@@ -113,11 +118,31 @@ async function doStartHubTransport(): Promise<void> {
     reconnect: { baseMs: 1000, maxMs: 30000 },
   });
 
+  // BLE lane (WS4): a GATT peripheral sealed with the shared BLE session key.
+  // Optional — if BLE is off/unsupported/denied the router just uses cloud.
+  const bleSecretB64 = await SecureStore.getItemAsync(BLE_SECRET_KEY).catch(() => null);
+  if (bleSecretB64) {
+    try {
+      const bleSession = await SessionCrypto.deriveFromSecret(
+        getCryptoProvider(),
+        b64decode(bleSecretB64),
+        "familyhub-ble-session",
+      );
+      ble = new BleTransport({ link: createHubBleLink(), session: bleSession });
+    } catch (e) {
+      console.log("[HubTransport] BLE lane init failed:", e);
+      ble = null;
+    }
+  }
+
   const outbox = new Outbox(asyncStorageKV, "familyhub_outbox");
   await outbox.load();
-  router = new TransportRouter({ cloud, outbox, dedup: new Dedup() });
+  router = new TransportRouter({ ble: ble ?? undefined, cloud, outbox, dedup: new Dedup() });
   router.subscribe(routeInbound);
   await cloud.connect();
+  // Start advertising in the background; failure (BLE off/denied) must not
+  // affect the cloud lane, which is the primary transport.
+  if (ble) void ble.connect().catch((e) => console.log("[HubTransport] BLE advertise failed:", e));
   console.log("[HubTransport] Cloud lane connecting for household", household.id);
 }
 
@@ -148,9 +173,16 @@ export async function stopHubTransport(): Promise<void> {
   } catch {
     /* ignore */
   }
+  try {
+    await ble?.disconnect();
+  } catch {
+    /* ignore */
+  }
+  ble?.dispose();
   router?.dispose();
   router = null;
   cloud = null;
+  ble = null;
   contentSession = null;
   cursor = 0;
 }

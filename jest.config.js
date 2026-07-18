@@ -16,6 +16,8 @@ module.exports = {
     "^expo-notifications$": "<rootDir>/src/__mocks__/expo-notifications.js",
     "^expo-device$": "<rootDir>/src/__mocks__/expo-device.js",
     "^expo-application$": "<rootDir>/src/__mocks__/expo-application.js",
+    "^.*/modules/ble-peripheral$": "<rootDir>/src/__mocks__/ble-peripheral.js",
+    "^.*/BlePeripheralLink$": "<rootDir>/src/__mocks__/BlePeripheralLink.js",
   },
   collectCoverageFrom: [
     "src/services/**/*.ts",

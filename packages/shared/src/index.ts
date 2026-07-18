@@ -19,6 +19,7 @@ export * from "./transport/TransportRouter";
 export * from "./transport/CloudTransport";
 export * from "./transport/BleLink";
 export * from "./transport/BleTransport";
+export * from "./transport/bleUuids";
 export * from "./transport/framing";
 export * from "./transport/dedup";
 export * from "./transport/outbox";

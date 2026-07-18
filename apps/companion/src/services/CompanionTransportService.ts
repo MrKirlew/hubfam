@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   TransportRouter,
   CloudTransport,
+  BleTransport,
   RelayClient,
   Outbox,
   Dedup,
@@ -20,12 +21,14 @@ import {
 import { useCompanionStore } from "../store/companionStore";
 import { getCryptoProvider } from "./crypto";
 import { asyncStorageKV } from "./kv";
-import { K_DEVICE_TOKEN, K_CONTENT_KEY, K_RELAY_URL, K_WS_URL } from "./PairingService";
+import { K_DEVICE_TOKEN, K_CONTENT_KEY, K_RELAY_URL, K_WS_URL, K_BLE_SECRET } from "./PairingService";
+import { createCompanionBleLink } from "./BleCentralLink";
 
 const CURSOR_KEY = "familyhub_cloud_cursor";
 
 let router: TransportRouter | null = null;
 let cloud: CloudTransport | null = null;
+let ble: BleTransport | null = null;
 let session: SessionCrypto | null = null;
 let cursor = 0;
 let householdId = "";
@@ -65,12 +68,30 @@ export async function startCompanionTransport(): Promise<void> {
     reconnect: { baseMs: 1000, maxMs: 30000 },
   });
 
+  // BLE lane (WS4): a GATT central that scans for the paired hub, sealed with
+  // the shared BLE session key. Optional — cloud is the primary lane.
+  const bleSecretB64 = await SecureStore.getItemAsync(K_BLE_SECRET).catch(() => null);
+  if (bleSecretB64) {
+    try {
+      const bleSession = await SessionCrypto.deriveFromSecret(
+        getCryptoProvider(),
+        b64decode(bleSecretB64),
+        "familyhub-ble-session",
+      );
+      ble = new BleTransport({ link: createCompanionBleLink(), session: bleSession });
+    } catch {
+      ble = null;
+    }
+  }
+
   const outbox = new Outbox(asyncStorageKV, "familyhub_outbox");
   await outbox.load();
-  router = new TransportRouter({ cloud, outbox, dedup: new Dedup() });
+  router = new TransportRouter({ ble: ble ?? undefined, cloud, outbox, dedup: new Dedup() });
   router.onStateChange((s) => useCompanionStore.getState().setConnection(s.effective));
   router.subscribe((env) => void routeInbound(env));
   await cloud.connect();
+  // Start scanning in the background; BLE failure must not affect the cloud lane.
+  if (ble) void ble.connect().catch(() => {});
   useCompanionStore.getState().setConnection(router.getState().effective);
 }
 
@@ -80,9 +101,16 @@ export async function stopCompanionTransport(): Promise<void> {
   } catch {
     /* ignore */
   }
+  try {
+    await ble?.disconnect();
+  } catch {
+    /* ignore */
+  }
+  ble?.dispose();
   router?.dispose();
   router = null;
   cloud = null;
+  ble = null;
   session = null;
 }
 

@@ -1,0 +1,14 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+  package="expo.modules.bleperipheral">
+
+  <!-- BLE peripheral (Android 12 / API 31+). neverForLocation: we don't derive
+       location from BLE, so no ACCESS_FINE_LOCATION is required for these. -->
+  <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+  <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+  <uses-permission
+    android:name="android.permission.BLUETOOTH_SCAN"
+    android:usesPermissionFlags="neverForLocation" />
+
+  <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+
+</manifest>
