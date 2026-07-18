@@ -40,6 +40,7 @@ class BlePeripheralModule : Module() {
   private var advertiseCallback: AdvertiseCallback? = null
   private var notifyChar: BluetoothGattCharacteristic? = null
   private var central: BluetoothDevice? = null
+  private var advServiceUuid: UUID? = null
 
   override fun definition() = ModuleDefinition {
     Name("BlePeripheral")
@@ -103,8 +104,23 @@ class BlePeripheralModule : Module() {
 
     gattServer = server
     notifyChar = notify
+    advServiceUuid = serviceUuid
 
-    val bleAdvertiser = adapter.bluetoothLeAdvertiser ?: throw Exception("BLE advertising unsupported")
+    startAdvertising(serviceUuid)
+  }
+
+  /**
+   * (Re)start connectable advertising for the service. Safe to call again after a
+   * central disconnects: Android stops advertising once a connection is
+   * established, so the hub must re-advertise to stay discoverable for the next
+   * (or reconnecting) phone. Stops any prior advertiser first so it's idempotent.
+   */
+  private fun startAdvertising(serviceUuid: UUID) {
+    val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager ?: return
+    val adapter = manager.adapter ?: return
+    if (!adapter.isEnabled) return
+    val bleAdvertiser = adapter.bluetoothLeAdvertiser ?: return
+    advertiseCallback?.let { prev -> try { bleAdvertiser.stopAdvertising(prev) } catch (_: Exception) {} }
     val settings = AdvertiseSettings.Builder()
       .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
       .setConnectable(true)
@@ -128,6 +144,9 @@ class BlePeripheralModule : Module() {
       } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
         if (device.address == central?.address) central = null
         this@BlePeripheralModule.sendEvent("onConnectionChange", mapOf("connected" to (central != null)))
+        // Once no central is connected, resume advertising so the hub is
+        // discoverable again for the next / reconnecting phone.
+        if (central == null) advServiceUuid?.let { uuid -> try { startAdvertising(uuid) } catch (_: Exception) {} }
       }
     }
 
@@ -193,5 +212,6 @@ class BlePeripheralModule : Module() {
     gattServer = null
     notifyChar = null
     central = null
+    advServiceUuid = null
   }
 }
