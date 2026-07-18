@@ -181,10 +181,17 @@ export default function PairingScreen() {
                 <View style={s.qrBox}>
                   <QRCode value={invite.qr} size={220} />
                 </View>
-                <Text style={s.code}>Code: {invite.code}</Text>
                 <Text style={s.codeSub}>
                   {remainingMs > 0 ? `Expires in ${fmtRemaining(remainingMs)}` : "Refreshing code…"}
                 </Text>
+                {invite.claimCode ? (
+                  <View style={s.claimBox}>
+                    <Text style={s.claimLabel}>Can&apos;t scan? Type this code on the phone:</Text>
+                    <Text style={s.code} selectable accessibilityLabel={`Pairing code ${invite.claimCode}`}>
+                      {invite.claimCode}
+                    </Text>
+                  </View>
+                ) : null}
                 <TouchableOpacity
                   style={s.shareBtn}
                   onPress={() => void onShareInvite()}
@@ -299,6 +306,8 @@ function getStyles(t: Theme) {
     qrBox: { backgroundColor: "#fff", padding: 14, borderRadius: 12 },
     code: { color: t.text, fontSize: 20, fontWeight: "800", letterSpacing: 2, marginTop: 4 },
     codeSub: { color: t.textFaint, fontSize: 12 },
+    claimBox: { alignItems: "center", gap: 4, marginTop: 6 },
+    claimLabel: { color: t.textSub, fontSize: 12, textAlign: "center" },
     shareBtn: {
       flexDirection: "row",
       alignItems: "center",

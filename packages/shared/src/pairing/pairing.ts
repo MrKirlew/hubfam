@@ -46,12 +46,16 @@ export async function createHubHousehold(
 export interface PairingInvite {
   qr: string;
   code: string;
+  /** Optional short manual code (camera-free fallback); present when a claim blob was uploaded. */
+  claimCode?: string;
   expiresAt: number;
 }
 
 /**
  * Hub: mint a single-use pairing token and build the QR the companion scans.
  * `relay` must be authed as the hub (relay.withToken(hub deviceToken)).
+ * Returns the built `payload` too so callers can also seal it into a claim blob
+ * (see createPairingInviteWithClaim) using the SAME single-use token.
  */
 export async function startPairing(
   relay: RelayClient,
@@ -63,7 +67,7 @@ export async function startPairing(
     contentKey: Uint8Array;
     bleSecret: Uint8Array;
   },
-): Promise<PairingInvite> {
+): Promise<PairingInvite & { payload: PairingPayload }> {
   const { pairingToken, code, expiresAt } = await relay.pairStart(ctx.householdId);
   const payload: PairingPayload = {
     v: PAIRING_QR_VERSION,
@@ -75,7 +79,7 @@ export async function startPairing(
     contentKey: b64encode(ctx.contentKey),
     bleSecret: b64encode(ctx.bleSecret),
   };
-  return { qr: encodePairingQR(payload), code, expiresAt };
+  return { qr: encodePairingQR(payload), code, expiresAt, payload };
 }
 
 export interface CompanionIdentity {

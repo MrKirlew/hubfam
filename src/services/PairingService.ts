@@ -9,7 +9,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   RelayClient,
   createHubHousehold,
-  startPairing,
+  createPairingInviteWithClaim,
   b64encode,
   b64decode,
   type PairingInvite,
@@ -64,7 +64,7 @@ export async function createPairingInvite(): Promise<PairingInvite> {
   if (!household || !deviceToken || !contentKeyB64 || !bleSecretB64) throw new Error("Set up sharing first.");
 
   const relay = new RelayClient({ baseUrl: RELAY_URL, fetchFn: fetch as any, deviceToken });
-  return startPairing(relay, {
+  return createPairingInviteWithClaim(relay, getCryptoProvider(), {
     householdId: household.id,
     relayUrl: RELAY_URL,
     wsUrl: `${RELAY_URL.replace(/^http/, "ws")}/household/${household.id}/ws`,

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ActivityInd
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useCompanionStore } from "../store/companionStore";
-import { pairFromQR } from "../services/PairingService";
+import { pairFromQR, pairFromCode } from "../services/PairingService";
 
 export default function PairScreen() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -36,7 +36,7 @@ export default function PairScreen() {
       if (!r.granted) {
         Alert.alert(
           "Camera needed",
-          "Allow camera access to scan the QR — or tap “Enter invite instead” and paste the invite from the hub.",
+          "Allow camera access to scan the QR — or tap “Enter code instead” and type the code shown on the hub.",
         );
         setManualMode(true);
         return;
@@ -50,10 +50,12 @@ export default function PairScreen() {
     if (!text || busy) return;
     setBusy(true);
     try {
-      await pairFromQR(text, memberName || "Me");
+      // A pasted invite is JSON ("{...}"); anything else is a typed short code.
+      if (text.startsWith("{")) await pairFromQR(text, memberName || "Me");
+      else await pairFromCode(text, memberName || "Me");
       // store.paired flips -> App switches to HomeScreen
     } catch (e: any) {
-      Alert.alert("Pairing failed", e?.message ?? "Check the invite text and try again.");
+      Alert.alert("Pairing failed", e?.message ?? "Check the code or invite and try again.");
       setBusy(false);
     }
   }, [manualText, busy, memberName]);
@@ -103,21 +105,21 @@ export default function PairScreen() {
             style={styles.secondaryBtn}
             onPress={() => setManualMode(true)}
             accessibilityRole="button"
-            accessibilityLabel="Enter invite instead of scanning"
+            accessibilityLabel="Enter a code or invite instead of scanning"
           >
-            <Text style={styles.secondaryBtnText}>Enter invite instead</Text>
+            <Text style={styles.secondaryBtnText}>Enter code instead</Text>
           </TouchableOpacity>
         ) : (
           <View style={styles.manualBox}>
-            <Text style={styles.label}>Paste the invite from the hub</Text>
+            <Text style={styles.label}>Type the code from the hub, or paste its invite</Text>
             <TextInput
               style={[styles.input, styles.inputMultiline]}
               value={manualText}
               onChangeText={setManualText}
-              placeholder="Paste invite text here"
+              placeholder="e.g. ABCD-EFGH-JKMN-PQRS"
               placeholderTextColor="#5b6478"
               multiline
-              autoCapitalize="none"
+              autoCapitalize="characters"
               autoCorrect={false}
             />
             <TouchableOpacity
@@ -133,7 +135,8 @@ export default function PairScreen() {
         )}
 
         <Text style={styles.hint}>
-          On the hub: Settings → Family Sharing → Add a phone{manualMode ? " → Share invite" : ""}.
+          On the hub: Settings → Family Sharing → Add a phone
+          {manualMode ? " — then type the code it shows (or Share invite to paste)" : ""}.
         </Text>
       </View>
     </SafeAreaView>
