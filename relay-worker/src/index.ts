@@ -37,6 +37,16 @@ export default {
     const parts = url.pathname.split("/").filter(Boolean);
 
     try {
+      // Global manual-code pairing claim store — not household-scoped, so it
+      // lives in one singleton DO. A companion redeeming a typed code reaches
+      // it with just the claim id (it doesn't know its household id yet).
+      if (parts[0] === "claims") {
+        const stub = env.HOUSEHOLD.get(env.HOUSEHOLD.idFromName("_claims"));
+        if (parts[1] === "put" && req.method === "POST") return withCors(await forward(stub, "/claims/put", req));
+        if (parts[1] === "get" && req.method === "POST") return withCors(await forward(stub, "/claims/get", req));
+        return withCors(errorResponse(404, "not found"));
+      }
+
       if (parts[0] !== "household") return withCors(errorResponse(404, "not found"));
 
       // POST /household  → create a brand-new household (fresh DO)

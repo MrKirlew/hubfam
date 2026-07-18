@@ -28,11 +28,13 @@ export * from "./net/http";
 export * from "./net/RelayClient";
 export * from "./pairing/qr";
 export * from "./pairing/pairing";
+export * from "./pairing/claim";
 
 // List sync
 export * from "./list-sync/reconcile";
 
 // Utilities
 export * from "./util/bytes";
+export * from "./util/base32";
 export * from "./util/id";
 export * from "./util/kv";

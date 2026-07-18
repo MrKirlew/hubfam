@@ -107,4 +107,17 @@ export class RelayClient {
   registerPush(householdId: string, pushToken: string): Promise<{ ok: boolean }> {
     return this.request("POST", `/household/${householdId}/push/register`, { pushToken });
   }
+
+  // ---- global pairing-claim store (manual code fallback) ------------------
+  // Not household-scoped: a companion redeeming a typed code doesn't yet know
+  // its household id, so these blobs live in a single global claim store keyed
+  // by an opaque claim id. Ciphertext only — the relay stays zero-knowledge.
+
+  putPairingBlob(claimId: string, ciphertext: string): Promise<{ ok: boolean; expiresAt: number }> {
+    return this.request("POST", "/claims/put", { claimId, ciphertext });
+  }
+
+  getPairingBlob(claimId: string): Promise<{ ciphertext: string }> {
+    return this.request("POST", "/claims/get", { claimId });
+  }
 }

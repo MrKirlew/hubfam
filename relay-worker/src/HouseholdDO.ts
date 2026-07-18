@@ -8,6 +8,9 @@ export interface Env {
 }
 
 const PAIRING_TTL_MS = 5 * 60 * 1000;
+// Manual-code pairing blobs are opaque AES-GCM ciphertext ({iv,ct}); a base64
+// sealing of the ~250-byte pairing payload is well under this cap.
+const MAX_CLAIM_BLOB_LEN = 4096;
 
 interface DeviceRow {
   deviceId: string;
@@ -57,6 +60,13 @@ export class HouseholdDO extends DurableObject<Env> {
       `CREATE TABLE IF NOT EXISTS pairing_tokens (
         token TEXT PRIMARY KEY, code TEXT, expiresAt INTEGER, consumedBy TEXT, createdAt INTEGER)`,
     );
+    // Global manual-code pairing blobs (only used by the singleton "_claims" DO).
+    // Ciphertext only — the id reveals nothing about the AES key, so this stays
+    // zero-knowledge like the rest of the relay.
+    this.sql.exec(
+      `CREATE TABLE IF NOT EXISTS pairing_blobs (
+        claimId TEXT PRIMARY KEY, ciphertext TEXT, expiresAt INTEGER, createdAt INTEGER)`,
+    );
     this.sql.exec(`CREATE TABLE IF NOT EXISTS cursors (deviceId TEXT PRIMARY KEY, lastSeq INTEGER)`);
   }
 
@@ -90,6 +100,8 @@ export class HouseholdDO extends DurableObject<Env> {
       if (req.method === "POST" && path === "/create") return this.handleCreate(req);
       if (req.method === "POST" && path === "/pair/start") return this.handlePairStart(req);
       if (req.method === "POST" && path === "/pair/redeem") return this.handlePairRedeem(req);
+      if (req.method === "POST" && path === "/claims/put") return this.handleClaimPut(req);
+      if (req.method === "POST" && path === "/claims/get") return this.handleClaimGet(req);
       if (req.method === "POST" && path === "/messages") return this.handlePostMessage(req);
       if (req.method === "GET" && path === "/state") return this.handleState(req);
       if (req.method === "POST" && path === "/lists/ops") return this.handleListOp(req);
@@ -171,6 +183,41 @@ export class HouseholdDO extends DurableObject<Env> {
     );
     this.sql.exec(`UPDATE pairing_tokens SET consumedBy=? WHERE token=?`, deviceId, token);
     return jsonResponse({ deviceId, deviceToken, householdId: this.metaGet("householdId") });
+  }
+
+  // ---- global manual-code claim store (singleton "_claims" DO) ------------
+  // Unauthenticated by design: a companion redeeming a typed code has no device
+  // token yet. Safety rests on the blob being opaque ciphertext, a short TTL,
+  // and the claim id being unguessable (derived from an 80-bit code secret).
+
+  private async handleClaimPut(req: Request): Promise<Response> {
+    const body = (await req.json().catch(() => ({}))) as any;
+    const claimId = String(body.claimId || "");
+    const ciphertext = String(body.ciphertext || "");
+    if (!claimId || !ciphertext) return errorResponse(400, "missing claimId or ciphertext");
+    if (ciphertext.length > MAX_CLAIM_BLOB_LEN) return errorResponse(413, "claim blob too large");
+    const now = Date.now();
+    this.sql.exec(`DELETE FROM pairing_blobs WHERE expiresAt < ?`, now);
+    const inserted = this.sql.exec(
+      `INSERT OR IGNORE INTO pairing_blobs (claimId,ciphertext,expiresAt,createdAt) VALUES (?,?,?,?)`,
+      claimId,
+      ciphertext,
+      now + PAIRING_TTL_MS,
+      now,
+    );
+    if (inserted.rowsWritten === 0) return errorResponse(409, "claim id already in use");
+    return jsonResponse({ ok: true, expiresAt: now + PAIRING_TTL_MS });
+  }
+
+  private async handleClaimGet(req: Request): Promise<Response> {
+    const body = (await req.json().catch(() => ({}))) as any;
+    const claimId = String(body.claimId || "");
+    if (!claimId) return errorResponse(400, "missing claimId");
+    const now = Date.now();
+    this.sql.exec(`DELETE FROM pairing_blobs WHERE expiresAt < ?`, now);
+    const rows = this.sql.exec(`SELECT ciphertext FROM pairing_blobs WHERE claimId=?`, claimId).toArray() as any[];
+    if (!rows.length) return errorResponse(404, "claim not found or expired");
+    return jsonResponse({ ciphertext: rows[0].ciphertext as string });
   }
 
   private async handlePostMessage(req: Request): Promise<Response> {
