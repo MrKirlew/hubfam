@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
+import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Share } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -28,11 +28,47 @@ export default function PairingScreen() {
   const [setup, setSetup] = useState(false);
   const [busy, setBusy] = useState(false);
   const [invite, setInvite] = useState<PairingInvite | null>(null);
+  const [remainingMs, setRemainingMs] = useState(0);
+  const refreshingRef = useRef(false);
   const relayOk = isRelayConfigured();
 
   useEffect(() => {
     isSharingSetUp().then(setSetup);
   }, [household]);
+
+  // Live countdown for the active invite; auto-refresh on expiry so the shown
+  // QR/code is never stale (a stale token causes "Pairing failed" on the phone).
+  useEffect(() => {
+    if (!invite) {
+      setRemainingMs(0);
+      return;
+    }
+    let cancelled = false;
+    const tick = async () => {
+      const left = invite.expiresAt - Date.now();
+      if (left > 0) {
+        setRemainingMs(left);
+        return;
+      }
+      setRemainingMs(0);
+      if (refreshingRef.current) return;
+      refreshingRef.current = true;
+      try {
+        const fresh = await createPairingInvite();
+        if (!cancelled) setInvite(fresh);
+      } catch {
+        // Leave the expired code shown; the user can tap "Add a phone" again.
+      } finally {
+        refreshingRef.current = false;
+      }
+    };
+    void tick();
+    const iv = setInterval(() => void tick(), 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+    };
+  }, [invite]);
 
   const onSetup = useCallback(async () => {
     setBusy(true);
@@ -56,6 +92,18 @@ export default function PairingScreen() {
       setBusy(false);
     }
   }, []);
+
+  const onShareInvite = useCallback(async () => {
+    if (!invite) return;
+    try {
+      // The invite payload contains the household keys — same data the QR
+      // already shows openly. Offered only as a camera-free fallback; the user
+      // should send it to their own phone over a trusted channel.
+      await Share.share({ message: invite.qr });
+    } catch {
+      // User dismissed the share sheet.
+    }
+  }, [invite]);
 
   const onRevoke = useCallback((id: string, name: string) => {
     Alert.alert("Remove device?", `${name} will lose access to this hub.`, [
@@ -134,7 +182,19 @@ export default function PairingScreen() {
                   <QRCode value={invite.qr} size={220} />
                 </View>
                 <Text style={s.code}>Code: {invite.code}</Text>
-                <Text style={s.codeSub}>Expires in a few minutes</Text>
+                <Text style={s.codeSub}>
+                  {remainingMs > 0 ? `Expires in ${fmtRemaining(remainingMs)}` : "Refreshing code…"}
+                </Text>
+                <TouchableOpacity
+                  style={s.shareBtn}
+                  onPress={() => void onShareInvite()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Share invite for a phone that can't scan"
+                >
+                  <Ionicons name="share-outline" size={18} color={t.accent} />
+                  <Text style={s.shareText}>Share invite (no camera)</Text>
+                </TouchableOpacity>
+                <Text style={s.shareCaveat}>Only send this to your own phone.</Text>
                 <TouchableOpacity style={s.link} onPress={() => setInvite(null)}>
                   <Text style={s.linkText}>Done</Text>
                 </TouchableOpacity>
@@ -182,6 +242,13 @@ export default function PairingScreen() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function fmtRemaining(ms: number): string {
+  const totalSec = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
 function getStyles(t: Theme) {
@@ -232,6 +299,19 @@ function getStyles(t: Theme) {
     qrBox: { backgroundColor: "#fff", padding: 14, borderRadius: 12 },
     code: { color: t.text, fontSize: 20, fontWeight: "800", letterSpacing: 2, marginTop: 4 },
     codeSub: { color: t.textFaint, fontSize: 12 },
+    shareBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 16,
+      marginTop: 6,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: t.cardBorder,
+    },
+    shareText: { color: t.accent, fontSize: 14, fontWeight: "600" },
+    shareCaveat: { color: t.textFaint, fontSize: 11, textAlign: "center" },
     link: { paddingVertical: 8, paddingHorizontal: 24, marginTop: 4 },
     linkText: { color: t.accent, fontSize: 15, fontWeight: "600" },
     section: { color: t.text, fontSize: 16, fontWeight: "700", marginTop: 8 },

@@ -11,6 +11,8 @@ export default function PairScreen() {
   const setMemberName = useCompanionStore((s) => s.setMemberName);
   const [scanning, setScanning] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [manualMode, setManualMode] = useState(false);
+  const [manualText, setManualText] = useState("");
 
   const onScanned = useCallback(
     async ({ data }: { data: string }) => {
@@ -32,12 +34,29 @@ export default function PairScreen() {
     if (!permission?.granted) {
       const r = await requestPermission();
       if (!r.granted) {
-        Alert.alert("Camera needed", "Allow camera access to scan the hub's pairing QR.");
+        Alert.alert(
+          "Camera needed",
+          "Allow camera access to scan the QR — or tap “Enter invite instead” and paste the invite from the hub.",
+        );
+        setManualMode(true);
         return;
       }
     }
     setScanning(true);
   }, [permission, requestPermission]);
+
+  const submitManual = useCallback(async () => {
+    const text = manualText.trim();
+    if (!text || busy) return;
+    setBusy(true);
+    try {
+      await pairFromQR(text, memberName || "Me");
+      // store.paired flips -> App switches to HomeScreen
+    } catch (e: any) {
+      Alert.alert("Pairing failed", e?.message ?? "Check the invite text and try again.");
+      setBusy(false);
+    }
+  }, [manualText, busy, memberName]);
 
   if (scanning) {
     return (
@@ -78,7 +97,44 @@ export default function PairScreen() {
         <TouchableOpacity style={styles.primaryBtn} onPress={startScan} accessibilityRole="button" accessibilityLabel="Scan pairing QR">
           <Text style={styles.primaryBtnText}>Scan pairing QR</Text>
         </TouchableOpacity>
-        <Text style={styles.hint}>On the hub: Settings → Family Sharing → Add a phone.</Text>
+
+        {!manualMode ? (
+          <TouchableOpacity
+            style={styles.secondaryBtn}
+            onPress={() => setManualMode(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Enter invite instead of scanning"
+          >
+            <Text style={styles.secondaryBtnText}>Enter invite instead</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.manualBox}>
+            <Text style={styles.label}>Paste the invite from the hub</Text>
+            <TextInput
+              style={[styles.input, styles.inputMultiline]}
+              value={manualText}
+              onChangeText={setManualText}
+              placeholder="Paste invite text here"
+              placeholderTextColor="#5b6478"
+              multiline
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <TouchableOpacity
+              style={[styles.primaryBtn, (busy || !manualText.trim()) && styles.btnDisabled]}
+              disabled={busy || !manualText.trim()}
+              onPress={submitManual}
+              accessibilityRole="button"
+              accessibilityLabel="Pair with pasted invite"
+            >
+              {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Pair</Text>}
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <Text style={styles.hint}>
+          On the hub: Settings → Family Sharing → Add a phone{manualMode ? " → Share invite" : ""}.
+        </Text>
       </View>
     </SafeAreaView>
   );
@@ -102,6 +158,11 @@ const styles = StyleSheet.create({
   },
   primaryBtn: { backgroundColor: "#60a5fa", borderRadius: 14, paddingVertical: 15, alignItems: "center", marginTop: 10 },
   primaryBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  btnDisabled: { opacity: 0.5 },
+  secondaryBtn: { paddingVertical: 12, alignItems: "center", marginTop: 4 },
+  secondaryBtnText: { color: "#60a5fa", fontSize: 15, fontWeight: "600" },
+  manualBox: { gap: 10, marginTop: 4 },
+  inputMultiline: { minHeight: 90, textAlignVertical: "top" },
   hint: { color: "rgba(232,238,255,.5)", fontSize: 13, textAlign: "center", marginTop: 6 },
   cameraWrap: { flex: 1, backgroundColor: "#000" },
   cameraOverlay: { flex: 1, alignItems: "center", justifyContent: "space-between", paddingVertical: 40 },
