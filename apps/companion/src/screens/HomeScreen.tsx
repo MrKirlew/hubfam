@@ -1,5 +1,17 @@
 import React, { useState, useCallback } from "react";
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ActivityIndicator, Switch, ScrollView } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  Switch,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { MessageRepeat } from "@familyhub/shared";
 import { useCompanionStore } from "../store/companionStore";
@@ -152,15 +164,26 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-        <TextInput
-          style={styles.input}
-          value={text}
-          onChangeText={setText}
-          placeholder="Type a message for the hub…"
-          placeholderTextColor="#5b6478"
-          multiline
-        />
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
+      >
+        <ScrollView
+          contentContainerStyle={styles.body}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+        >
+          <TextInput
+            style={styles.input}
+            value={text}
+            onChangeText={setText}
+            placeholder="Type a message for the hub…"
+            placeholderTextColor="#5b6478"
+            multiline
+            returnKeyType="done"
+            submitBehavior="blurAndSubmit"
+          />
 
         <View style={styles.optRow}>
           <Text style={styles.optLabel}>🔊 Make it loud (play a sound on the hub)</Text>
@@ -329,13 +352,15 @@ export default function HomeScreen() {
             <Text style={styles.btnText}>{sched || custom ? "Schedule alert" : "Send alert"}</Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#080c18" },
+  flex: { flex: 1 },
   header: {
     flexDirection: "row",
     alignItems: "center",

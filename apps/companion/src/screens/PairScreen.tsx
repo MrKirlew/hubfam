@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from "react";
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useCompanionStore } from "../store/companionStore";
@@ -85,7 +85,8 @@ export default function PairScreen() {
 
   return (
     <SafeAreaView style={styles.root}>
-      <View style={styles.body}>
+      <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <View style={styles.body}>
         <Text style={styles.logo}>Family Hub Remote</Text>
         <Text style={styles.lead}>Pair with your family&apos;s hub to send messages and lists to it — over WiFi, cellular, or Bluetooth.</Text>
         <Text style={styles.label}>Your name</Text>
@@ -95,6 +96,8 @@ export default function PairScreen() {
           onChangeText={setMemberName}
           placeholder="e.g. Mum"
           placeholderTextColor="#5b6478"
+          returnKeyType="done"
+          submitBehavior="blurAndSubmit"
         />
         <TouchableOpacity style={styles.primaryBtn} onPress={startScan} accessibilityRole="button" accessibilityLabel="Scan pairing QR">
           <Text style={styles.primaryBtnText}>Scan pairing QR</Text>
@@ -121,6 +124,8 @@ export default function PairScreen() {
               multiline
               autoCapitalize="characters"
               autoCorrect={false}
+              returnKeyType="done"
+              submitBehavior="blurAndSubmit"
             />
             <TouchableOpacity
               style={[styles.primaryBtn, (busy || !manualText.trim()) && styles.btnDisabled]}
@@ -138,7 +143,8 @@ export default function PairScreen() {
           On the hub: Settings → Family Sharing → Add a phone
           {manualMode ? " — then type the code it shows (or Share invite to paste)" : ""}.
         </Text>
-      </View>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
