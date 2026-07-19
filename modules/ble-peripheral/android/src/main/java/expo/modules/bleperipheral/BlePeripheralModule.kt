@@ -16,8 +16,11 @@ import android.bluetooth.le.AdvertiseSettings
 import android.bluetooth.le.BluetoothLeAdvertiser
 import android.content.Context
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Base64
+import android.util.Log
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.util.UUID
@@ -41,6 +44,7 @@ class BlePeripheralModule : Module() {
   private var notifyChar: BluetoothGattCharacteristic? = null
   private var central: BluetoothDevice? = null
   private var advServiceUuid: UUID? = null
+  private val mainHandler = Handler(Looper.getMainLooper())
 
   override fun definition() = ModuleDefinition {
     Name("BlePeripheral")
@@ -115,11 +119,19 @@ class BlePeripheralModule : Module() {
    * established, so the hub must re-advertise to stay discoverable for the next
    * (or reconnecting) phone. Stops any prior advertiser first so it's idempotent.
    */
-  private fun startAdvertising(serviceUuid: UUID) {
+  private fun startAdvertising(serviceUuid: UUID, attempt: Int = 0) {
     val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager ?: return
     val adapter = manager.adapter ?: return
     if (!adapter.isEnabled) return
-    val bleAdvertiser = adapter.bluetoothLeAdvertiser ?: return
+    // bluetoothLeAdvertiser can be null right after boot / a BT toggle while the
+    // LE subsystem is still coming up. Retry a few times before giving up, so the
+    // hub reliably advertises even when its transport starts before BT is ready.
+    val bleAdvertiser = adapter.bluetoothLeAdvertiser
+    if (bleAdvertiser == null) {
+      Log.w("BlePeripheral", "bluetoothLeAdvertiser null (attempt $attempt)")
+      if (attempt < 6) mainHandler.postDelayed({ startAdvertising(serviceUuid, attempt + 1) }, 1000)
+      return
+    }
     advertiseCallback?.let { prev -> try { bleAdvertiser.stopAdvertising(prev) } catch (_: Exception) {} }
     val settings = AdvertiseSettings.Builder()
       .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
@@ -130,7 +142,19 @@ class BlePeripheralModule : Module() {
       .setIncludeDeviceName(false)
       .addServiceUuid(ParcelUuid(serviceUuid))
       .build()
-    val cb = object : AdvertiseCallback() {}
+    val cb = object : AdvertiseCallback() {
+      override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
+        Log.i("BlePeripheral", "advertising started for $serviceUuid")
+      }
+      override fun onStartFailure(errorCode: Int) {
+        Log.w("BlePeripheral", "advertise onStartFailure code=$errorCode (attempt $attempt)")
+        // ALREADY_STARTED means we're already advertising — that's fine. Otherwise
+        // retry (covers a transiently-busy advertiser after churn).
+        if (errorCode != ADVERTISE_FAILED_ALREADY_STARTED && attempt < 6) {
+          mainHandler.postDelayed({ startAdvertising(serviceUuid, attempt + 1) }, 1500)
+        }
+      }
+    }
     bleAdvertiser.startAdvertising(settings, data, cb)
     advertiser = bleAdvertiser
     advertiseCallback = cb
